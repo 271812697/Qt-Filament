@@ -25,7 +25,7 @@
 
 #include "PlatformGlfwGL.h"
 #include <camutils/Manipulator.h>
-#include <QWindow>
+#include <QResizeEvent>
 struct App {
 	utils::Entity light;
 	filament::Material* material;
@@ -37,22 +37,7 @@ struct App {
 };
 
 namespace MOON {
-	HWND getOpenGLWidgetHWND(QOpenGLWidget* glWidget) {
-		if (!glWidget) {
-			return nullptr;
-		}
 
-		// 方式1：通过 QWidget::windowHandle() 获取 QWindow，再转 HWND（推荐）
-		QWindow* window = glWidget->windowHandle();
-		if (window) {
-			// winId() 返回的是平台原生窗口句柄（Windows 下即为 HWND）
-			return reinterpret_cast<HWND>(window->winId());
-		}
-
-		// 方式2：兼容旧版 Qt/嵌入场景（直接获取 QWidget 原生句柄）
-		WId wid = glWidget->winId();
-		return reinterpret_cast<HWND>(wid);
-	}
 	struct OpenGLProcAddressHelper {
 		inline static QOpenGLContext* ctx;
 		static void* getProcAddress(const char* name) {
@@ -195,7 +180,10 @@ namespace MOON {
 	}
 
 	void DebugOpenGLWidget::resizeEvent(QResizeEvent* event) {
+		unsigned int viewW = event->size().width();
+		unsigned int viewH = event->size().height();
 		QOpenGLWidget::resizeEvent(event);
+		view->setViewport({0,0,viewW,viewH});
 	}
 	void DebugOpenGLWidget::mousePressEvent(QMouseEvent* event) {
 
