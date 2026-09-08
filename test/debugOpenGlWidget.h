@@ -1,6 +1,11 @@
 #pragma once
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions_4_5_Core>
+#include <QElapsedTimer>
+
+namespace filament::backend {
+class PlatformGlfwGL;
+}
 
 namespace MOON {
 
@@ -24,6 +29,18 @@ namespace MOON {
 		void keyReleaseEvent(QKeyEvent* event) override;
 		void showImGui();
 
+	private slots:
+		void createEngineAndSetup();
+
+	private:
+		bool mGrabbing = false;
+		QElapsedTimer mElapsed;
+		double mLastFrameTime = -1.0;
+		uint64_t mSubmittedFrames = 0;      // 已提交给 Filament 的帧数
+		GLuint mBlitFbo = 0;                // GUI 线程用于 blit 的 FBO
+		filament::backend::PlatformGlfwGL* mPlatform = nullptr;
+		bool mHasBlitContent = false;       // 是否已成功呈现过至少一帧
+		int mLastBlitSlot = 0;              // 最近一次呈现用的环形纹理槽
 	};
 }
 

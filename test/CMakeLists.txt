@@ -8,6 +8,7 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${${TARGET_NAME}_HEAD} ${$
 
 add_executable(${TARGET_NAME} ${${TARGET_NAME}_HEAD} ${${TARGET_NAME}_SRC})
 target_compile_options(${TARGET_NAME} PRIVATE /bigobj)
+target_compile_options(${TARGET_NAME} PRIVATE /utf-8)
 # Link dependencies    
 target_link_libraries(${TARGET_NAME} PUBLIC
     Qt${QT_VERSION_MAJOR}::Core
@@ -20,6 +21,10 @@ target_link_libraries(${TARGET_NAME} PUBLIC glad)
 target_link_libraries(${TARGET_NAME} PUBLIC filament)
 target_link_libraries(${TARGET_NAME} PUBLIC bluegl)
 target_link_libraries(${TARGET_NAME} PUBLIC filameshio)
+target_link_libraries(${TARGET_NAME} PUBLIC filament-iblprefilter)
+target_link_libraries(${TARGET_NAME} PUBLIC imageio)
+target_link_libraries(${TARGET_NAME} PUBLIC image)
+target_link_libraries(${TARGET_NAME} PUBLIC stb)
 target_link_libraries(${TARGET_NAME} PUBLIC camutils
 suzanne-resources
 sample-resources
@@ -48,5 +53,20 @@ foreach(QtPluginDLL ${QtPluginsDLLs})
     )
 endforeach()
 
-
-
+# 拷贝运行所需的 Qt DLL 到 exe 目录（Release/Debug 各自对应）
+set(QtBinDir "${QT_DIR}/../../../bin")
+set(QtRuntimeDLLs
+    Qt5Core.dll
+    Qt5Gui.dll
+    Qt5Widgets.dll
+    Qt5OpenGL.dll
+    Qt5Svg.dll
+)
+foreach(QtRuntimeDLL ${QtRuntimeDLLs})
+    add_custom_command(
+        TARGET ${TARGET_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${QtBinDir}/${QtRuntimeDLL}"
+                "$<TARGET_FILE_DIR:${TARGET_NAME}>/${QtRuntimeDLL}"
+    )
+endforeach()
