@@ -7,6 +7,7 @@ namespace MOON {
 	ViewerPanel::ViewerPanel(QWidget* parent, Qt::WindowFlags f) :QWidget(parent)
 	{
 		auto sceneWindow = new ViewerWidget(this);
+		mSceneWindow = sceneWindow;
 		QVBoxLayout* layout = new QVBoxLayout(this);
 		layout->setContentsMargins(0, 0, 0, 0);
 		layout->setSpacing(0);
@@ -14,6 +15,9 @@ namespace MOON {
 		// default to strong focus
 		this->setFocusPolicy(Qt::StrongFocus);
 		this->setMouseTracking(true);
+	}
+	ViewerWidget* ViewerPanel::viewerWidget() const {
+		return mSceneWindow;
 	}
 	void ViewerPanel::keyPressEvent(QKeyEvent* event) {
 	}

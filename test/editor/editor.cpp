@@ -5,6 +5,7 @@
 #include <QSplitter>
 #include <QtWidgets/QDockWidget>
 #include "editor.h"
+#include "View/viewerwidget.h"
 #include "UI/TreeViewPanel/hierarchypanel.h"
 #include "UI/SettingPanel/SettingPanel.h"
 #include "UI/PropertyPanel/PropertyPanel.h"
@@ -15,6 +16,7 @@
 #include "Command/menubar/openFile.h"
 #include "Command/menubar/exportFile.h"
 #include "Command/menubar/cameraMode.h"
+#include "Command/viewer/CameraFitCommand.h"
 #include "Command/menubar/fpsStat.h"
 #include "Command/menubar/visibleview.h"
 #include "editor/UI/TreeViewPanel/treeViewpanel.h"
@@ -30,10 +32,11 @@ namespace MOON {
 			QIcon icon;
 			icon.addFile(QString::fromUtf8(":/widgets/icons/awesomeface.png"), QSize(), QIcon::Normal, QIcon::Off);
 			self->setWindowIcon(icon);
+			self->statusBar();   // 创建状态栏，菜单项悬浮提示（statusTip）显示在这里
 			auto centralwidget = new QWidget(self);
 			self->setCentralWidget(centralwidget);
 			auto centralwidget_layout = new QHBoxLayout(centralwidget);
-			auto middlePanel = new MulViewPanel(centralwidget);
+			middlePanel = new MulViewPanel(centralwidget);
 			QSizePolicy sizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 			sizePolicy.setHeightForWidth(middlePanel->sizePolicy().hasHeightForWidth());
 			middlePanel->setSizePolicy(sizePolicy);
@@ -75,6 +78,14 @@ namespace MOON {
 		void buildFileMenu() {
 			auto openFileCommand=new OpenFileCommand(self);
 			auto exportFileCommand = new ExportFileCommand(self);
+
+			// Open → 文件对话框 → 加载到当前 filament viewer
+			if (middlePanel) {
+				if (ViewerWidget* viewer = middlePanel->currentViewerWidget()) {
+					connect(openFileCommand, &OpenFileCommand::readFilePath,
+						viewer, &ViewerWidget::onReadFile);
+				}
+			}
 			
 			menu_File->addAction(openFileCommand->action());
 			menu_File->addAction(exportFileCommand->action());
@@ -82,6 +93,9 @@ namespace MOON {
 		void buildDisplayMenu() {
 			auto cameraModeCommand = new CameraModeComand(self);
 			menu_Display->addAction(cameraModeCommand->action());
+			// Camera Fit：悬浮子项提示具体视角方向
+			auto cameraFitCommand = new CameraFitCommand(self);
+			menu_Display->addAction(cameraFitCommand->action());
 			auto fpsStatCommand = new FpsStatCommand(self);
 			menu_Display->addAction(fpsStatCommand->action());
 		}
@@ -124,6 +138,7 @@ namespace MOON {
 	private:
 		Editor* self = nullptr;
 		QSplitter* vert_splitter_ = nullptr;
+		MulViewPanel* middlePanel = nullptr;
 		QMenuBar* mMenubar;
 		QMenu* menu_File;
 		QMenu* menu_Display;

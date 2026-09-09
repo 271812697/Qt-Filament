@@ -32,6 +32,7 @@ sample-resources
 )
 
 target_include_directories(${TARGET_NAME} PUBLIC $<BUILD_INTERFACE: ${Extern_DIR}> $<BUILD_INTERFACE: ${CMAKE_CURRENT_SOURCE_DIR}/include>)
+target_include_directories(${TARGET_NAME} PRIVATE "${CMAKE_BINARY_DIR}/filament/samples")
 set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 20)
 

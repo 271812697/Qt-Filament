@@ -21,13 +21,15 @@ namespace MOON {
 			ROTATE_CAMERA_CCW,
 		};
 		CameraFitCommand(QObject* parent, Mode mode);
+		// 创建带标准视角子菜单的 Camera Fit 菜单项
+		CameraFitCommand(QObject* parent);
 
 
 	protected:
 		virtual void execute()override;
 	private:
-		
-			Mode ReactionMode;
+		void runMode(Mode mode);
+		Mode ReactionMode = ZOOM_TO_DATA;
 	};
 
 }

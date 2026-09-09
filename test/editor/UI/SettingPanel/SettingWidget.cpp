@@ -76,20 +76,13 @@ namespace MOON {
 
 			// Three top-level collapsible groups, each containing the item
 			// groups built by the corresponding setting widget.
-			auto* outerRender = new CollapsibleGroupBoxWidget("PathTrace Mat", content);
-			auto* outerDebug = new CollapsibleGroupBoxWidget("Debug Setting", content);
-			auto* outerPass = new CollapsibleGroupBoxWidget("Render Pass Setting", content);
-			layout->addWidget(outerRender);
-			layout->addWidget(outerDebug);
-			layout->addWidget(outerPass);
+			auto* outerRenderSetting = new CollapsibleGroupBoxWidget("Render Setting", content);
+			layout->addWidget(outerRenderSetting);
 			layout->addStretch();
 
-			auto* renderWidget = new RenderSettingWidget(outerRender);
-			outerRender->addSubWidget(renderWidget);
+			
 
-			outerRender->setCollapsed(false);
-			outerDebug->setCollapsed(false);
-			outerPass->setCollapsed(false);
+			outerRenderSetting->setCollapsed(false);
 
 			scrollArea->setWidget(content);
 

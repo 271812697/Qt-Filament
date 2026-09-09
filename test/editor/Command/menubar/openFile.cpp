@@ -30,7 +30,7 @@ namespace MOON {
 		QString fileName = QFileDialog::getOpenFileName(nullptr,
 			tr("Open Flow Scene"),
 			QDir::homePath(),
-			tr("Flow Scene Files (*.scene;*.gltf;*.obj;*.stl;*.*)"));
+			tr("Flow Scene Files (*.bin;*.*)"));
 		if (!QFileInfo::exists(fileName))
 			return;
 		

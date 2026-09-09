@@ -7,6 +7,7 @@ namespace MOON {
 	class MulViewPanel::MulViewPanelImpl {
 	public:
 		QTabWidget* tabWidget = nullptr;
+		ViewerPanel* viewerPanel = nullptr;
 
 	};
 
@@ -20,13 +21,18 @@ namespace MOON {
 		glayout->setSpacing(0);
 		glayout->addWidget(impl->tabWidget, 0, 0);
 		
-		impl->tabWidget->addTab(new ViewerPanel(this), "viewerpanel");
+		impl->viewerPanel = new ViewerPanel(this);
+		impl->tabWidget->addTab(impl->viewerPanel, "viewerpanel");
 
 	}
 
 	MulViewPanel::~MulViewPanel()
 	{
 		delete impl;
+	}
+
+	ViewerWidget* MulViewPanel::currentViewerWidget() const {
+		return impl->viewerPanel ? impl->viewerPanel->viewerWidget() : nullptr;
 	}
 
 }
