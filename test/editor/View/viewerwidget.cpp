@@ -1,7 +1,7 @@
-﻿#include "debugOpenGlWidget.h"
+﻿#include "viewerwidget.h"
 #include "glloader.h"
 
-#include <iostream>
+#include "core/log.h"
 
 #include <filament/Camera.h>
 #include <filament/Engine.h>
@@ -39,7 +39,6 @@
 #include <cstdlib>
 #include <cstdint>
 #include <fstream>
-#include <iostream>
 #include <limits>
 #include <string>
 #include <vector>
@@ -63,7 +62,7 @@ namespace MOON {
 	};
 	filament::Engine* engine = nullptr;
 	filament::Renderer* renderer = nullptr;
-	
+
 	filament::Scene* scene = nullptr;// engine->createScene();
 	filament::View* view = nullptr;// engine->createView();
 	filament::SwapChain* swapchain = nullptr;// engine->createSwapChain(this, 0);
@@ -87,7 +86,7 @@ namespace MOON {
 
 	// 按优先级尝试的文件路径（SaveDomains 输出名是 "res"，无扩展名）
 	static const char* kDomainMeshPaths[] = {
-		"C:/Project/opengl/Build/Source/PathTrace/res", // 现有测试数据
+		"C:/Users/27181/Desktop/ImGui-D3D11Hook-master/2.50Atypec.bin", // 现有测试数据
 		"res",                                          // SaveDomains 默认输出
 	};
 
@@ -126,12 +125,12 @@ namespace MOON {
 		const float q = v * (1.0f - f * s);
 		const float t = v * (1.0f - (1.0f - f) * s);
 		switch (i) {
-			case 0: return { v, t, p };
-			case 1: return { q, v, p };
-			case 2: return { p, v, t };
-			case 3: return { p, q, v };
-			case 4: return { t, p, v };
-			default: return { v, p, q };
+		case 0: return { v, t, p };
+		case 1: return { q, v, p };
+		case 2: return { p, v, t };
+		case 3: return { p, q, v };
+		case 4: return { t, p, v };
+		default: return { v, p, q };
 		}
 	}
 
@@ -225,7 +224,7 @@ namespace MOON {
 
 	// 把 [begin, end) 区间内的 domain 合并成一个网格（局部索引 → 全局偏移）
 	static bool MergeDomains(const std::vector<LoadedDomain>& domains,
-			size_t begin, size_t end, UploadedMesh& out)
+		size_t begin, size_t end, UploadedMesh& out)
 	{
 		uint64_t totalPoints = 0, totalTris = 0;
 		for (size_t i = begin; i < end; i++) {
@@ -287,7 +286,7 @@ namespace MOON {
 
 	// 把 g_domainMeshes 逐个构建成 Filament Renderable 并加入场景
 	static void AddDomainMeshesToScene(filament::Engine* engine, filament::Scene* scene,
-			filament::Material* material)
+		filament::Material* material)
 	{
 		if (g_domainMeshes.empty()) return;
 
@@ -352,15 +351,14 @@ namespace MOON {
 			g_domainEntities.push_back(entity);
 
 			if ((i + 1) % PROGRESS_STEP == 0 || i + 1 == meshCount) {
-				std::cout << "[Mesh] 已构建 " << (i + 1) << "/" << meshCount
-					<< " 个 Renderable..." << std::endl;
+				CORE_INFO("[Mesh] 已构建 {}/{} 个 Renderable...", i + 1, meshCount);
 			}
 		}
 	}
 
 	// 入口：找文件 → 解析 → 分组合并 → 建 Renderable
 	static void LoadAndAddDomainMeshes(filament::Engine* engine, filament::Scene* scene,
-			filament::Material* material)
+		filament::Material* material)
 	{
 		if (const char* v = getenv("DOMAINS_PER_MESH")) {
 			const int n = atoi(v);
@@ -377,13 +375,13 @@ namespace MOON {
 			}
 		}
 		if (path.empty()) {
-			std::cout << "[Mesh] 未找到 SaveDomains 文件（默认名 res）" << std::endl;
+			CORE_WARN("[Mesh] 未找到 SaveDomains 文件（默认名 res）");
 			return;
 		}
 
 		std::vector<LoadedDomain> domains;
 		if (!LoadDomainsFromFile(path, domains) || domains.empty()) {
-			std::cout << "[Mesh] 解析失败: " << path << std::endl;
+			CORE_ERROR("[Mesh] 解析失败: {}", path);
 			return;
 		}
 
@@ -404,7 +402,7 @@ namespace MOON {
 			g_domainMeshes.push_back(std::move(mesh));
 		}
 		if (g_domainMeshes.empty()) {
-			std::cout << "[Mesh] 合并失败（空网格）: " << path << std::endl;
+			CORE_ERROR("[Mesh] 合并失败（空网格）: {}", path);
 			return;
 		}
 
@@ -417,11 +415,8 @@ namespace MOON {
 		uint64_t totalTris = 0;
 		for (const auto& m : g_domainMeshes) totalTris += m.indices.size() / 3;
 		g_totalTriangles = totalTris;
-		std::cout << "[Mesh] 已加载 " << path
-			<< ": domains=" << domainCount
-			<< " renderables=" << g_domainMeshes.size()
-			<< " (每个 Renderable 合并 " << g_domainsPerMesh << " 个 domain)"
-			<< " triangles=" << totalTris << std::endl;
+		CORE_INFO("[Mesh] 已加载 {}: domains={} renderables={} (每个 Renderable 合并 {} 个 domain) triangles={}",
+			path, domainCount, g_domainMeshes.size(), g_domainsPerMesh, totalTris);
 	}
 
 	// ----------------------------------------------------------------------------
@@ -504,24 +499,23 @@ namespace MOON {
 
 		scene->setIndirectLight(ibl);
 		scene->setSkybox(skybox);
-		std::cout << "[IBL] 已加载 " << path
-			<< " (" << w << "x" << h << ")" << std::endl;
+		CORE_INFO("[IBL] 已加载 {} ({}x{})", path, w, h);
 		return true;
 	}
 
-	DebugOpenGLWidget::DebugOpenGLWidget(QWidget* parent) {
+	ViewerWidget::ViewerWidget(QWidget* parent) {
 		this->setFocusPolicy(Qt::StrongFocus);
 		this->setMouseTracking(true);
 		QSurfaceFormat format;
 		format.setSamples(0); // 离屏渲染 + blit 方案要求默认 FBO 单采样
 		this->setFormat(format);
-		
-	}
-	DebugOpenGLWidget::~DebugOpenGLWidget() {
 
 	}
-	void DebugOpenGLWidget::initializeGL() {
-		
+	ViewerWidget::~ViewerWidget() {
+
+	}
+	void ViewerWidget::initializeGL() {
+
 		QOpenGLWidget::initializeGL();
 		// opengl funcs
 		bool flag = initializeOpenGLFunctions();
@@ -534,7 +528,7 @@ namespace MOON {
 		mElapsed.start();
 		mLastFrameTime = -1.0;
 		glGenFramebuffers(1, &mBlitFbo); // GUI 线程用于把共享纹理 blit 到 Qt FBO
-		
+
 		filament::backend::PlatformGlfwGL* platform = new filament::backend::PlatformGlfwGL();
 		platform->glwidget = this;
 		platform->setSharedContext(context());
@@ -546,7 +540,7 @@ namespace MOON {
 		QTimer::singleShot(0, this, [this]() { createEngineAndSetup(); });
 	}
 
-	void DebugOpenGLWidget::createEngineAndSetup() {
+	void ViewerWidget::createEngineAndSetup() {
 		if (engine) return;
 
 		// Qt 的 QOpenGLWidget 在两次渲染之间也会让上下文保持 current，
@@ -580,12 +574,13 @@ namespace MOON {
 		auto setup = [&]() {
 			view->setPostProcessingEnabled(true);
 			auto& em = utils::EntityManager::get();
-			if (!SetupIBL(engine, scene)) {
+			//if (!SetupIBL(engine, scene)) 
+			{
 				// IBL 加载失败时回退到纯色天空盒
 				auto skybox = filament::Skybox::Builder()
 					.color({ 0.1, 0.125, 0.25, 1.0 }).build(*engine);
 				scene->setSkybox(skybox);
-				std::cout << "[IBL] 未找到环境贴图，使用纯色天空盒" << std::endl;
+				CORE_WARN("[IBL] 未找到环境贴图，使用纯色天空盒");
 			}
 			app.mMainCameraMan = filament::camutils::Manipulator<float>::Builder()
 				.targetPosition(0, 0, 0)
@@ -618,7 +613,7 @@ namespace MOON {
 		view->setScene(scene);
 		view->setViewport({ 0, 0, (uint32_t)width(), (uint32_t)height() });
 	}
-	void DebugOpenGLWidget::timerEvent(QTimerEvent* e) {
+	void ViewerWidget::timerEvent(QTimerEvent* e) {
 		this->update();
 	}
 	void animate(filament::Engine* engine, filament::View* view, double now, double deltaTime) {
@@ -630,8 +625,8 @@ namespace MOON {
 		const uint32_t h = view->getViewport().height;
 		const float aspect = (float)w / h;
 		app.cam->setProjection(45.0, aspect, 0.1, 1000.0);
-		};
-	void DebugOpenGLWidget::paintGL() {
+	};
+	void ViewerWidget::paintGL() {
 		// 引擎尚未创建（initializeGL 后第一个空闲时刻才创建）
 		if (!engine || !view || !renderer) {
 			glClearColor(0.1f, 0.125f, 0.25f, 1.0f);
@@ -639,8 +634,6 @@ namespace MOON {
 			return;
 		}
 
-		glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
-		
 		const double now = mElapsed.elapsed() / 1000.0;
 		const double delta = mLastFrameTime < 0.0 ? 0.0 : now - mLastFrameTime;
 		mLastFrameTime = now;
@@ -651,9 +644,9 @@ namespace MOON {
 			static double lastFpsTime = 0.0;
 			frameCount++;
 			if (now - lastFpsTime >= 1.0) {
-				std::cout << "[FPS] " << frameCount / (now - lastFpsTime)
-					<< " fps, renderables(draw calls)=" << g_domainEntities.size()
-					<< ", triangles=" << g_totalTriangles << std::endl;
+				CORE_INFO("[FPS] {} fps, renderables(draw calls)={}, triangles={}",
+					frameCount / (now - lastFpsTime),
+					g_domainEntities.size(), g_totalTriangles);
 
 				// CPU/GPU 时间拆分（上一帧的 FrameInfo）
 				auto history = renderer->getFrameInfoHistory(1);
@@ -664,10 +657,9 @@ namespace MOON {
 						(fi.backendEndFrame - fi.backendBeginFrame) / 1000;
 					const int64_t gpuUs =
 						(fi.gpuFrameDuration > 0 ? fi.gpuFrameDuration
-						                         : fi.denoisedGpuFrameDuration) / 1000;
-					std::cout << "  [Frame] frontend(cpu)=" << frontendUs << "us"
-						<< " backend(cpu)=" << backendUs << "us"
-						<< " gpu=" << gpuUs << "us" << std::endl;
+							: fi.denoisedGpuFrameDuration) / 1000;
+					CORE_INFO("  [Frame] frontend(cpu)={}us backend(cpu)={}us gpu={}us",
+						frontendUs, backendUs, gpuUs);
 				}
 				frameCount = 0;
 				lastFpsTime = now;
@@ -697,7 +689,7 @@ namespace MOON {
 			glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
 			mHasBlitContent = true;
 			mLastBlitSlot = slot;
-		};
+			};
 
 		if (submitted) {
 			mSubmittedFrames++;
@@ -707,27 +699,28 @@ namespace MOON {
 				const int slot = (int)((mSubmittedFrames - 2) % 3); // RING_COUNT = 3
 				present(slot);
 			}
-		} else if (mHasBlitContent && mPlatform) {
+		}
+		else if (mHasBlitContent && mPlatform) {
 			// beginFrame 返回 false（跳帧）时重复呈现上一帧，避免黑屏/闪烁
 			present(mLastBlitSlot);
 		}
 	}
-	bool DebugOpenGLWidget::event(QEvent* evt) {
+	bool ViewerWidget::event(QEvent* evt) {
 		return QOpenGLWidget::event(evt);
 	}
-	void DebugOpenGLWidget::leaveEvent(QEvent* event) {
+	void ViewerWidget::leaveEvent(QEvent* event) {
 		if (mGrabbing) {
 			app.mMainCameraMan->grabEnd();
 			mGrabbing = false;
 		}
 	}
 
-	void DebugOpenGLWidget::resizeEvent(QResizeEvent* event) {
+	void ViewerWidget::resizeEvent(QResizeEvent* event) {
 		unsigned int viewW = event->size().width();
 		unsigned int viewH = event->size().height();
 		QOpenGLWidget::resizeEvent(event);
 		if (view) {
-			view->setViewport({0,0,viewW,viewH});
+			view->setViewport({ 0,0,viewW,viewH });
 		}
 		if (app.mMainCameraMan) {
 			app.mMainCameraMan->setViewport((int)viewW, (int)viewH);
@@ -736,7 +729,7 @@ namespace MOON {
 			mPlatform->setTargetSize(viewW, viewH); // 驱动线程下次 makeCurrent 时重建离屏缓冲
 		}
 	}
-	void DebugOpenGLWidget::mousePressEvent(QMouseEvent* event) {
+	void ViewerWidget::mousePressEvent(QMouseEvent* event) {
 		if (event->button() == Qt::LeftButton ||
 			event->button() == Qt::MiddleButton ||
 			event->button() == Qt::RightButton) {
@@ -747,21 +740,21 @@ namespace MOON {
 		}
 	}
 
-	void DebugOpenGLWidget::mouseMoveEvent(QMouseEvent* event) {
+	void ViewerWidget::mouseMoveEvent(QMouseEvent* event) {
 		if (mGrabbing) {
 			app.mMainCameraMan->grabUpdate(event->pos().x(), event->pos().y());
 			event->accept();
 		}
 	}
 
-	void DebugOpenGLWidget::mouseReleaseEvent(QMouseEvent* event) {
+	void ViewerWidget::mouseReleaseEvent(QMouseEvent* event) {
 		if (mGrabbing) {
 			app.mMainCameraMan->grabEnd();
 			mGrabbing = false;
 		}
 	}
 
-	void DebugOpenGLWidget::wheelEvent(QWheelEvent* event) {
+	void ViewerWidget::wheelEvent(QWheelEvent* event) {
 		QPoint delta = event->angleDelta();
 		if (delta.isNull()) {
 			delta = event->pixelDelta();
@@ -772,14 +765,14 @@ namespace MOON {
 			event->accept();
 		}
 	}
-	void DebugOpenGLWidget::keyPressEvent(QKeyEvent* event) {
+	void ViewerWidget::keyPressEvent(QKeyEvent* event) {
 
 	}
-	void DebugOpenGLWidget::keyReleaseEvent(QKeyEvent* event) {
+	void ViewerWidget::keyReleaseEvent(QKeyEvent* event) {
 
 	}
 
-	void DebugOpenGLWidget::showImGui() {
+	void ViewerWidget::showImGui() {
 
 	}
 }

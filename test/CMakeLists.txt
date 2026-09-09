@@ -5,8 +5,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE ${TARGET_NAME}_HEAD ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
 file(GLOB_RECURSE ${TARGET_NAME}_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${${TARGET_NAME}_HEAD} ${${TARGET_NAME}_SRC})
-
-add_executable(${TARGET_NAME} ${${TARGET_NAME}_HEAD} ${${TARGET_NAME}_SRC})
+qt5_add_resources(RESOURCES ./resource/resource.qrc)
+add_executable(${TARGET_NAME} ${${TARGET_NAME}_HEAD} ${${TARGET_NAME}_SRC} ${RESOURCES})
 target_compile_options(${TARGET_NAME} PRIVATE /bigobj)
 target_compile_options(${TARGET_NAME} PRIVATE /utf-8)
 # Link dependencies    
@@ -18,6 +18,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC
     Qt${QT_VERSION_MAJOR}::Svg
 )
 target_link_libraries(${TARGET_NAME} PUBLIC glad)
+target_link_libraries(${TARGET_NAME} PUBLIC spdlog)
 target_link_libraries(${TARGET_NAME} PUBLIC filament)
 target_link_libraries(${TARGET_NAME} PUBLIC bluegl)
 target_link_libraries(${TARGET_NAME} PUBLIC filameshio)

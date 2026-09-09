@@ -1,20 +1,20 @@
-#pragma once
+﻿#pragma once
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions_4_5_Core>
 #include <QElapsedTimer>
 
 namespace filament::backend {
-class PlatformGlfwGL;
+	class PlatformGlfwGL;
 }
 
 namespace MOON {
 
-	class DebugOpenGLWidget : public QOpenGLWidget, QOpenGLFunctions_4_5_Core
+	class ViewerWidget : public QOpenGLWidget, QOpenGLFunctions_4_5_Core
 	{
 		Q_OBJECT
 	public:
-		explicit DebugOpenGLWidget(QWidget* parent);
-		~DebugOpenGLWidget();
+		explicit ViewerWidget(QWidget* parent);
+		~ViewerWidget();
 		void initializeGL() override;
 		void timerEvent(QTimerEvent* e) override;
 		void paintGL() override;
