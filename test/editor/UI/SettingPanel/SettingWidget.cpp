@@ -78,7 +78,10 @@ namespace MOON {
 			// groups built by the corresponding setting widget.
 			auto* outerRenderSetting = new CollapsibleGroupBoxWidget("Render Setting", content);
 			layout->addWidget(outerRenderSetting);
-			layout->addStretch();
+			// RenderPass / View 相关设置
+			auto* renderSettingWidget = new RenderSettingWidget(content);
+			outerRenderSetting->addSubWidget(renderSettingWidget);
+			//layout->addStretch();
 
 			
 

@@ -9,6 +9,7 @@ class QOpenGLWidget;
 
 namespace filament {
 	class Camera;
+	class ColorGrading;
 	class Engine;
 	class Material;
 	class Renderer;
@@ -42,6 +43,8 @@ namespace MOON {
 		static FilamentApp& instance();
 
 	signals:
+		// 引擎与场景初始化完成（UI 可以开始读/写 View 设置）
+		void engineInitialized();
 		// 场景网格加载/卸载完成（TreeViewPanel 等界面据此刷新）
 		void sceneLoaded(const QString& filePath);
 		void sceneCleared();
@@ -108,6 +111,8 @@ namespace MOON {
 		void setProjectionMode(ProjectionMode mode);
 		// 正交模式下滚轮缩放（scrollDelta：-1=上滚/拉近，+1=下滚/拉远）
 		void adjustOrthoZoom(float scrollDelta);
+		// 默认 ColorGrading 开关（开启时创建一个默认颜色分级对象）
+		void setColorGradingEnabled(bool enabled);
 		// 按当前视口宽高比应用投影（每帧由渲染循环调用）
 		void updateCameraProjection();
 		// 最近一次 loadScene 追加的实体在全局实体列表里的起始下标
@@ -126,6 +131,7 @@ namespace MOON {
 		filament::View* mView = nullptr;
 		filament::SwapChain* mSwapChain = nullptr;
 		filament::Camera* mCamera = nullptr;
+		filament::ColorGrading* mColorGrading = nullptr;
 		filament::Material* mMaterial = nullptr;
 		utils::Entity mLight;
 		filament::camutils::Manipulator<float>* mCameraManipulator = nullptr;

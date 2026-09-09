@@ -7,6 +7,7 @@
 
 #include <filament/Camera.h>
 #include <filament/Box.h>
+#include <filament/ColorGrading.h>
 #include <filament/Color.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
@@ -516,8 +517,8 @@ bool FilamentApp::initialize(QOpenGLWidget* hostWidget, filament::backend::Platf
     // 网格数量很大（数万个 Renderable/材质实例），默认 4MB 的
     // 后端句柄池会被撑爆并退回系统堆，这里调大到 64MB
     engineConfig.driverHandleArenaSizeMB = 256;
-
-    mEngine = filament::Engine::Builder()
+	engineConfig.commandBufferSizeMB = 24;
+	mEngine = filament::Engine::Builder()
         .backend(filament::Engine::Backend::OPENGL)
         .featureLevel(filament::backend::FeatureLevel::FEATURE_LEVEL_3)
         .config(&engineConfig)
@@ -581,7 +582,11 @@ bool FilamentApp::initialize(QOpenGLWidget* hostWidget, filament::backend::Platf
     if (!mPendingFilePath.isEmpty()) {
         loadScene(mPendingFilePath);
     }
-    return isReady();
+    const bool ready = isReady();
+    if (ready) {
+        emit engineInitialized();
+    }
+    return ready;
 }
 
 // ----------------------------------------------------------------------------
@@ -815,6 +820,20 @@ void FilamentApp::adjustOrthoZoom(float scrollDelta) {
     mOrthoZoomScale *= std::pow(0.8f, -scrollDelta);
     mOrthoZoomScale = std::clamp(mOrthoZoomScale, 0.001f, 10000.0f);
     updateCameraProjection();
+}
+
+void FilamentApp::setColorGradingEnabled(bool enabled) {
+    if (!mEngine || !mView) return;
+    if (enabled && !mColorGrading) {
+        mColorGrading = filament::ColorGrading::Builder().build(*mEngine);
+        if (mColorGrading) {
+            mView->setColorGrading(mColorGrading);
+        }
+    } else if (!enabled && mColorGrading) {
+        mView->setColorGrading(nullptr);
+        mEngine->destroy(mColorGrading);
+        mColorGrading = nullptr;
+    }
 }
 
 void FilamentApp::updateCameraProjection() {
