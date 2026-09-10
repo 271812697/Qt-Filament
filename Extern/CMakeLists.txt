@@ -1,4 +1,4 @@
-set(lib_folder "Extern")
+﻿set(lib_folder "Extern")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 if(NOT TARGET glad)
@@ -12,6 +12,12 @@ if(NOT TARGET glad)
     set_target_properties(glad PROPERTIES FOLDER ${lib_folder}/glad)
 endif()
 
+if(NOT TARGET spdlog)
+    option(SPDLOG_BUILD_EXAMPLE "" OFF)
+    option(SPDLOG_INSTALL "" OFF)
+    add_subdirectory(spdlog)
+    set_target_properties(spdlog PROPERTIES FOLDER ${lib_folder}/spdlog)
+endif()
 
 
 
