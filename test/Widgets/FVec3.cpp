@@ -41,12 +41,12 @@ void Fvec3::setVec3Value(float x, float y, float z) {
 
 
 void Fvec3::setWidgetValue(const QVariant& value) {
-   // setVec3Value(value.value<Maths::FVector3>());
+    const QVector3D v = value.value<QVector3D>();
+    setVec3Value(v.x(), v.y(), v.z());
 }
 
 QVariant Fvec3::widgetValue() {
-    return QVariant();
-    //return QVariant::fromValue(getVec3Value());
+    return QVariant::fromValue(QVector3D(x(), y(), z()));
 }
 
 

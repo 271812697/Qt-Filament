@@ -129,6 +129,20 @@ namespace MOON {
 			this, &TreeViewPanel::onSceneCleared);
 		connect(&FilamentApp::instance(), &FilamentApp::pickedEntityChanged,
 			this, &TreeViewPanel::onPickedEntityChanged);
+
+		// 选中行 → 通知 FilamentApp（PropertyWidget 据此显示实体组件）
+		connect(selectionModel(), &QItemSelectionModel::currentChanged,
+			this, [this](const QModelIndex& current, const QModelIndex&) {
+				int entityIndex = -1;
+				if (current.isValid()) {
+					if (QStandardItem* item = mModel->itemFromIndex(current)) {
+						if (item->parent()) {
+							entityIndex = item->data(Qt::UserRole).toInt();
+						}
+					}
+				}
+				FilamentApp::instance().setSelectedEntity(entityIndex);
+			});
 	}
 	TreeViewPanel::~TreeViewPanel()
 	{

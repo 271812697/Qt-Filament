@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <math/mat4.h>
+#include <math/vec3.h>
 #include <utils/Entity.h>
 
 class QOpenGLWidget;
@@ -52,6 +53,8 @@ namespace MOON {
 		void pickedEntityChanged(int entityIndex);
 		// View::pick 结果附带的世界坐标（命中实体时有效；-1 时坐标无意义）
 		void pickedWorldPosition(int entityIndex, float worldX, float worldY, float worldZ);
+		// 当前在 TreeView 中选中的实体（-1 表示无）
+		void selectedEntityChanged(int entityIndex);
 
 	public:
 		// 创建 Engine / Renderer / Scene / View / SwapChain / Camera / Light / Material，
@@ -119,6 +122,32 @@ namespace MOON {
 		// （新加载是追加，不删除旧 mesh；TreeView 用它只新增本批节点）
 		size_t lastLoadedEntityStart() const { return mLastLoadedEntityStart; }
 
+		// ---- 实体选择（TreeView / PropertyPanel 联动） ----
+		int selectedEntity() const { return mSelectedEntity; }
+		void setSelectedEntity(int entityIndex);
+
+		// ---- 实体 Transform（世界变换，旋转为角度制欧拉角） ----
+		filament::math::float3 entityTranslation(size_t index) const;
+		filament::math::float3 entityRotationEuler(size_t index) const;
+		filament::math::float3 entityScale(size_t index) const;
+		void setEntityTranslation(size_t index, filament::math::float3 value);
+		void setEntityRotationEuler(size_t index, filament::math::float3 value);
+		void setEntityScale(size_t index, filament::math::float3 value);
+
+		// ---- 实体材质原色（PropertyPanel 用） ----
+		filament::math::float3 entityBaseColor(size_t index) const;
+		void setEntityBaseColor(size_t index, filament::math::float3 value);
+
+		// ---- Renderable 组件状态（Filament 部分没有 getter，这里做缓存） ----
+		bool entityCastShadows(size_t index) const;
+		bool entityReceiveShadows(size_t index) const;
+		bool entityCulling(size_t index) const;
+		uint8_t entityPriority(size_t index) const;
+		void setEntityCastShadows(size_t index, bool value);
+		void setEntityReceiveShadows(size_t index, bool value);
+		void setEntityCulling(size_t index, bool value);
+		void setEntityPriority(size_t index, uint8_t value);
+
 	private:
 		explicit FilamentApp(QObject* parent = nullptr);
 		~FilamentApp() = default;
@@ -144,6 +173,7 @@ namespace MOON {
 		uint32_t mPickViewportHeight = 0;
 		ProjectionMode mProjectionMode = ProjectionMode::Perspective;
 		float mOrthoZoomScale = 1.0f;   // 正交视口缩放系数
+		int mSelectedEntity = -1;
 	};
 
 } // namespace MOON
