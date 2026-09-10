@@ -664,6 +664,92 @@ def perf_compare():
     s.save("perf-compare.svg")
 
 
+def context_model():
+    s = SVG(1240, 620)
+    s.text(620, 30, "OpenGL 上下文模型：状态 + 资源 + 共享组", 19, C_TXT, bold=True)
+
+    # 线程
+    s.box(40, 90, 320, 90, "线程 A", ["ctxA 为 current", "同一线程同时只有一个 current"], C_GRAY)
+    s.box(40, 240, 320, 90, "线程 B", ["ctxB 为 current", "一个上下文同一时刻", "只能在一个线程 current"], C_GRAY)
+    s.arrow(360, 135, 470, 135, "makeCurrent", ly=125)
+    s.arrow(360, 285, 470, 285, "makeCurrent", ly=275)
+
+    # 上下文
+    s.box(470, 60, 330, 200, "上下文 ctxA（驱动端状态机）", [
+        "current program / VAO",
+        "绑定中的纹理/缓冲",
+        "blend / depth / viewport …",
+        "纹理、缓冲等对象的命名空间",
+    ], C_BACK)
+    s.box(470, 290, 330, 200, "上下文 ctxB（另一份独立状态）", [
+        "状态互不影响",
+        "对象命名空间独立",
+    ], C_BACK)
+
+    s.arrow(800, 130, 900, 130, "资源可共享", ly=120)
+    s.box(900, 60, 310, 210, "共享组（share group）", [
+        "共享：纹理 / 缓冲 / program",
+        "共享：renderbuffer / sampler / sync",
+        "不共享：FBO / VAO / query /",
+        "transform feedback / pipeline",
+    ], C_GL)
+    s.text(620, 540, "结论：FBO/VAO 是上下文私有的 → 跨线程呈现必须走「共享纹理 + blit」，而不是直接绑对方的 FBO", 13, "#616161")
+    s.save("context-model.svg")
+
+
+def qt_filament_contexts():
+    s = SVG(1320, 780)
+    s.text(660, 28, "Qt-Filament 双上下文架构（PlatformGlfwGL 桥接）", 19, C_TXT, bold=True)
+
+    # GUI 线程
+    s.box(30, 70, 600, 300, "GUI 线程（Qt 主线程）", [], C_QT)
+    s.box(55, 120, 270, 110, "QOpenGLWidget 上下文", [
+        "Qt 负责创建/当前化",
+        "渲染间隙实测仍保持 current",
+        "display + present 归它管",
+    ], C_QT)
+    s.box(350, 120, 260, 110, "present：blit 到 Qt FBO", [
+        "GUI 自己的 blitFbo 包住",
+        "共享的环形纹理 → Qt FBO",
+    ], C_QT)
+    s.text(330, 280, "引擎在空闲时刻创建：先 context()->doneCurrent() 释放 widget 上下文，wglShareLists 才能成功", 12, "#C62828")
+
+    # 桥接
+    s.arrow(630, 210, 700, 210, "setShareContext + wglShareLists", dashed=True, lx=660, ly=195)
+
+    # 驱动线程
+    s.box(700, 70, 590, 300, "驱动线程（FEngine::loop）", [], C_FRONT)
+    s.box(725, 120, 260, 120, "共享的驱动上下文 +", [
+        "QOffscreenSurface",
+        "createDriver 里创建并 current",
+        "bluegl::bind() 加载 GL 函数",
+    ], C_FRONT)
+    s.box(1010, 120, 260, 120, "Filament OpenGL 后端", [
+        "渲染进离屏 FBO（上下文私有）",
+        "commit() 把颜色拷进环形纹理",
+        "makeCurrent 按帧确保 current",
+    ], C_BACK)
+    s.text(1000, 290, "FBO/VAO 不跨上下文共享；纹理经共享组对 GUI 线程可见", 12, "#C62828")
+
+    # 环形纹理
+    s.box(120, 430, 1080, 100, "3 槽环形纹理（驱动上下文创建，与 GUI 上下文共享）", [
+        "commit() 写入下一槽  →  GUI 等待完成后 blit 上一槽（1 帧流水线）",
+        "纹理 id 两边通用；FBO 各自私有",
+    ], C_DATA)
+    s.arrow(330, 370, 500, 430, "glBlitFramebuffer 拷贝", lx=380, ly=395)
+    s.arrow(990, 370, 850, 430, "读取纹理 id", lx=1030, ly=395)
+    s.arrow(420, 530, 250, 600, "GUI 侧 attach + blit", ly=565)
+
+    # 关键点
+    s.box(30, 600, 1260, 140, "这个项目处理上下文的关键点", [
+        "① 引擎创建前 doneCurrent：wglShareLists 要求源上下文不被占用，否则共享失败 → 纹理不可见 → 黑屏",
+        "② 默认 FBO id 由 getDefaultFramebufferObject() 提供，OpenGLContext 有缓存；离屏 FBO 变化时用 postContextChange 通知重置",
+        "③ 每帧 makeCurrent 保证驱动线程有 current 上下文；缩放时按原子尺寸重建离屏缓冲",
+        "④ 假 fence 让 FrameSkipper 永不跳帧（我们的环形缓冲自带节流），避免黑屏/闪烁",
+    ], C_WARN)
+    s.save("qt-filament-contexts.svg")
+
+
 def main():
     overview()
     call_chain()
@@ -675,6 +761,8 @@ def main():
     qt_integration()
     performance_breakdown()
     perf_compare()
+    context_model()
+    qt_filament_contexts()
     # 校验 XML 良构
     for name in os.listdir(OUT_DIR):
         if name.endswith(".svg"):

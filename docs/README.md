@@ -15,6 +15,7 @@
 | [05-command-stream.md](./05-command-stream.md) | 命令流：环形缓冲、生产消费、Dispatcher 分发 | `command-stream.svg` |
 | [06-qt-integration.md](./06-qt-integration.md) | Qt 集成层：PlatformGlfwGL、SwapChain、FBO 链路 | `qt-integration.svg` |
 | [07-performance-analysis.md](./07-performance-analysis.md) | 性能分析：帧时间构成、瓶颈定位、优化路径 | `performance-breakdown.svg` |
+| [08-opengl-context.md](./08-opengl-context.md) | OpenGL 上下文：概念、Qt/Filament 管理、双上下文桥接 | `context-model.svg` / `qt-filament-contexts.svg` |
 
 ## 整体架构
 
