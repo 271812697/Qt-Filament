@@ -21,8 +21,8 @@ namespace MOON {
 		scrollArea_->setFrameShape(QFrame::NoFrame);
 		scrollArea_->setContentsMargins(0, 0, 0, 0);
 
-		//PropertyWidget* ui =new PropertyWidget(this);
-		//scrollArea_->setWidget(ui);
+		auto* ui = new PropertyWidget(scrollArea_);
+		scrollArea_->setWidget(ui);
 		setWidget(scrollArea_);
 	}
 }

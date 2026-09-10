@@ -84,6 +84,58 @@ namespace {
 		return { std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z) };
 	}
 
+	// ---- 变换矩阵 <-> TRS（旋转为角度制欧拉角，顺序 XYZ） ----
+	static filament::math::mat4f ComposeTRS(filament::math::float3 t,
+		filament::math::float3 eulerDegrees, filament::math::float3 s)
+	{
+		using namespace filament::math;
+		constexpr float kDeg2Rad = 3.14159265358979f / 180.0f;
+		const float3 e = eulerDegrees * kDeg2Rad;
+		const float3 c{ cosf(e.x * 0.5f), cosf(e.y * 0.5f), cosf(e.z * 0.5f) };
+		const float3 sn{ sinf(e.x * 0.5f), sinf(e.y * 0.5f), sinf(e.z * 0.5f) };
+		// q = qx * qy * qz
+		const float qw = c.x * c.y * c.z + sn.x * sn.y * sn.z;
+		const float qx = sn.x * c.y * c.z - c.x * sn.y * sn.z;
+		const float qy = c.x * sn.y * c.z + sn.x * c.y * sn.z;
+		const float qz = c.x * c.y * sn.z - sn.x * sn.y * c.z;
+
+		const float xx = qx * qx, yy = qy * qy, zz = qz * qz;
+		const float xy = qx * qy, xz = qx * qz, yz = qy * qz;
+		const float wx = qw * qx, wy = qw * qy, wz = qw * qz;
+
+		mat4f m;
+		m[0][0] = (1 - 2 * (yy + zz)) * s.x;
+		m[1][0] = (2 * (xy - wz)) * s.x;
+		m[2][0] = (2 * (xz + wy)) * s.x;
+		m[0][1] = (2 * (xy + wz)) * s.y;
+		m[1][1] = (1 - 2 * (xx + zz)) * s.y;
+		m[2][1] = (2 * (yz - wx)) * s.y;
+		m[0][2] = (2 * (xz - wy)) * s.z;
+		m[1][2] = (2 * (yz + wx)) * s.z;
+		m[2][2] = (1 - 2 * (xx + yy)) * s.z;
+		m[3] = float4{ t, 1.0f };
+		return m;
+	}
+
+	static filament::math::float3 MatrixToEulerDegrees(const filament::math::mat4f& m)
+	{
+		using namespace filament::math;
+		const float3 c0{ m[0][0], m[1][0], m[2][0] };
+		const float3 c1{ m[0][1], m[1][1], m[2][1] };
+		const float3 c2{ m[0][2], m[1][2], m[2][2] };
+		const float sx = length(c0), sy = length(c1), sz = length(c2);
+		const float r00 = sx > 1e-8f ? c0.x / sx : 1.0f;
+		const float r10 = sx > 1e-8f ? c0.y / sx : 0.0f;
+		const float r20 = sx > 1e-8f ? c0.z / sx : 0.0f;
+		const float r21 = sy > 1e-8f ? c1.z / sy : 0.0f;
+		const float r22 = sz > 1e-8f ? c2.z / sz : 1.0f;
+		const float pitch = asinf(std::clamp(-r20, -1.0f, 1.0f));
+		const float roll = std::atan2(r10, r00);
+		const float yaw = std::atan2(r21, r22);
+		constexpr float kRad2Deg = 180.0f / 3.14159265358979f;
+		return { roll * kRad2Deg, pitch * kRad2Deg, yaw * kRad2Deg };
+	}
+
 	// HSV → RGB（h,s,v ∈ [0,1]）
 	static filament::math::float3 HsvToRgb(float h, float s, float v)
 	{
@@ -123,6 +175,10 @@ namespace {
 	static std::vector<filament::MaterialInstance*> g_domainMaterialInstances; // 卸载时销毁
 	static std::vector<filament::math::float3> g_domainBaseColors;             // 各实体原 baseColor
 	static std::vector<uint8_t> g_domainVisible;                            // 每个实体的可见性
+	static std::vector<uint8_t> g_domainCastShadows;                        // Renderable 缓存（Filament 无 getter）
+	static std::vector<uint8_t> g_domainReceiveShadows;
+	static std::vector<uint8_t> g_domainCulling;
+	static std::vector<uint8_t> g_domainPriority;
 	static constexpr size_t kNoHighlight = std::numeric_limits<size_t>::max();
 	static size_t g_highlightedEntity = kNoHighlight;
 	static filament::math::float3 g_unionMin;
@@ -293,6 +349,10 @@ namespace {
 		g_domainMaterialInstances.clear();
 		g_domainBaseColors.clear();
 		g_domainVisible.clear();
+		g_domainCastShadows.clear();
+		g_domainReceiveShadows.clear();
+		g_domainCulling.clear();
+		g_domainPriority.clear();
 		g_domainMeshes.clear();
 		g_totalTriangles = 0;
 		g_highlightedEntity = kNoHighlight;
@@ -374,6 +434,10 @@ namespace {
 			g_domainMaterialInstances.push_back(mi);
 			g_domainBaseColors.push_back(baseColor);
 			g_domainVisible.push_back(1);   // 新加载的实体默认可见
+			g_domainCastShadows.push_back(0);     // Builder 里 castShadows(false)
+			g_domainReceiveShadows.push_back(0);  // Builder 里 receiveShadows(false)
+			g_domainCulling.push_back(1);         // Builder 里 culling(true)
+			g_domainPriority.push_back(0);
 
 			if (built % PROGRESS_STEP == 0 || i + 1 == meshCount) {
 				CORE_INFO("[Mesh] 已构建 {}/{} 个 Renderable...", built, meshCount - beginIndex);
@@ -612,6 +676,7 @@ void FilamentApp::clearScene() {
     if (mEngine && mScene) {
         RemoveAllDomainMeshes(mEngine, mScene);
         mLastLoadedEntityStart = 0;
+        setSelectedEntity(-1);
         emit sceneCleared();
     }
 }
@@ -897,6 +962,145 @@ void FilamentApp::setEntityHighlighted(size_t index, bool highlighted) {
             "baseColor", filament::RgbType::LINEAR, g_domainBaseColors[index]);
         g_highlightedEntity = kNoHighlight;
     }
+}
+
+void FilamentApp::setSelectedEntity(int entityIndex) {
+    if (entityIndex >= (int)g_domainEntities.size()) {
+        entityIndex = -1;
+    }
+    if (mSelectedEntity == entityIndex) return;
+    mSelectedEntity = entityIndex;
+    emit selectedEntityChanged(entityIndex);
+}
+
+namespace {
+	bool GetEntityWorldMatrix(filament::Engine* engine, size_t index, filament::math::mat4f& out)
+	{
+		if (!engine || index >= g_domainEntities.size()) return false;
+		auto& tcm = engine->getTransformManager();
+		auto ti = tcm.getInstance(g_domainEntities[index]);
+		if (!ti) return false;
+		out = tcm.getWorldTransform(ti);
+		return true;
+	}
+}
+
+filament::math::float3 FilamentApp::entityTranslation(size_t index) const {
+	filament::math::mat4f m;
+	if (!GetEntityWorldMatrix(mEngine, index, m)) return {};
+	return { m[3].x, m[3].y, m[3].z };
+}
+
+filament::math::float3 FilamentApp::entityRotationEuler(size_t index) const {
+	filament::math::mat4f m;
+	if (!GetEntityWorldMatrix(mEngine, index, m)) return {};
+	return MatrixToEulerDegrees(m);
+}
+
+filament::math::float3 FilamentApp::entityScale(size_t index) const {
+	filament::math::mat4f m;
+	if (!GetEntityWorldMatrix(mEngine, index, m)) return { 1, 1, 1 };
+	using namespace filament::math;
+	return {
+		length(float3{ m[0][0], m[1][0], m[2][0] }),
+		length(float3{ m[0][1], m[1][1], m[2][1] }),
+		length(float3{ m[0][2], m[1][2], m[2][2] })
+	};
+}
+
+void FilamentApp::setEntityTranslation(size_t index, filament::math::float3 value) {
+	if (!mEngine || index >= g_domainEntities.size()) return;
+	auto& tcm = mEngine->getTransformManager();
+	auto ti = tcm.getInstance(g_domainEntities[index]);
+	if (!ti) return;
+	tcm.setTransform(ti, ComposeTRS(
+		value, MatrixToEulerDegrees(tcm.getWorldTransform(ti)), entityScale(index)));
+}
+
+void FilamentApp::setEntityRotationEuler(size_t index, filament::math::float3 value) {
+	if (!mEngine || index >= g_domainEntities.size()) return;
+	auto& tcm = mEngine->getTransformManager();
+	auto ti = tcm.getInstance(g_domainEntities[index]);
+	if (!ti) return;
+	tcm.setTransform(ti, ComposeTRS(entityTranslation(index), value, entityScale(index)));
+}
+
+void FilamentApp::setEntityScale(size_t index, filament::math::float3 value) {
+	if (!mEngine || index >= g_domainEntities.size()) return;
+	auto& tcm = mEngine->getTransformManager();
+	auto ti = tcm.getInstance(g_domainEntities[index]);
+	if (!ti) return;
+	tcm.setTransform(ti, ComposeTRS(
+		entityTranslation(index), MatrixToEulerDegrees(tcm.getWorldTransform(ti)), value));
+}
+
+filament::math::float3 FilamentApp::entityBaseColor(size_t index) const {
+	return index < g_domainBaseColors.size()
+		? g_domainBaseColors[index]
+		: filament::math::float3{ 1, 1, 1 };
+}
+
+void FilamentApp::setEntityBaseColor(size_t index, filament::math::float3 value) {
+	if (index >= g_domainBaseColors.size() ||
+		index >= g_domainMaterialInstances.size()) return;
+	g_domainBaseColors[index] = value;
+	// 正在悬浮高亮时保持金色，恢复时用新颜色
+	if (g_highlightedEntity != index) {
+		g_domainMaterialInstances[index]->setParameter(
+			"baseColor", filament::RgbType::LINEAR, value);
+	}
+}
+
+bool FilamentApp::entityCastShadows(size_t index) const {
+	return index < g_domainCastShadows.size() && g_domainCastShadows[index] != 0;
+}
+
+bool FilamentApp::entityReceiveShadows(size_t index) const {
+	return index < g_domainReceiveShadows.size() && g_domainReceiveShadows[index] != 0;
+}
+
+bool FilamentApp::entityCulling(size_t index) const {
+	return index < g_domainCulling.size() && g_domainCulling[index] != 0;
+}
+
+uint8_t FilamentApp::entityPriority(size_t index) const {
+	return index < g_domainPriority.size() ? g_domainPriority[index] : 0;
+}
+
+void FilamentApp::setEntityCastShadows(size_t index, bool value) {
+	if (!mEngine || index >= g_domainEntities.size()) return;
+	auto& rcm = mEngine->getRenderableManager();
+	auto ri = rcm.getInstance(g_domainEntities[index]);
+	if (!ri) return;
+	rcm.setCastShadows(ri, value);
+	g_domainCastShadows[index] = value ? 1 : 0;
+}
+
+void FilamentApp::setEntityReceiveShadows(size_t index, bool value) {
+	if (!mEngine || index >= g_domainEntities.size()) return;
+	auto& rcm = mEngine->getRenderableManager();
+	auto ri = rcm.getInstance(g_domainEntities[index]);
+	if (!ri) return;
+	rcm.setReceiveShadows(ri, value);
+	g_domainReceiveShadows[index] = value ? 1 : 0;
+}
+
+void FilamentApp::setEntityCulling(size_t index, bool value) {
+	if (!mEngine || index >= g_domainEntities.size()) return;
+	auto& rcm = mEngine->getRenderableManager();
+	auto ri = rcm.getInstance(g_domainEntities[index]);
+	if (!ri) return;
+	rcm.setCulling(ri, value);
+	g_domainCulling[index] = value ? 1 : 0;
+}
+
+void FilamentApp::setEntityPriority(size_t index, uint8_t value) {
+	if (!mEngine || index >= g_domainEntities.size()) return;
+	auto& rcm = mEngine->getRenderableManager();
+	auto ri = rcm.getInstance(g_domainEntities[index]);
+	if (!ri) return;
+	rcm.setPriority(ri, value);
+	g_domainPriority[index] = value;
 }
 
 } // namespace MOON
