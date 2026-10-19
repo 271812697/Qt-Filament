@@ -1,4 +1,4 @@
-﻿#include "LogPanel.h"
+#include "LogPanel.h"
 #include "core/log.h"
 #include "editor/UI/DockWidgetTitleBar.h"
 
@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QPalette>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
@@ -42,19 +43,6 @@ namespace MOON {
 					return "fatal";
 				default:
 					return "info";
-			}
-		}
-		QColor levelColor(int level) {
-			switch (level) {
-				case LogOutput::LL_WARNING:
-					return QColor("#e5c07b");
-				case LogOutput::LL_ERROR:
-				case LogOutput::LL_FATAL:
-					return QColor("#e06c75");
-				case LogOutput::LL_DEBUG:
-					return QColor("#7f8c98");
-				default:
-					return QColor("#98c379");
 			}
 		}
 	}
@@ -114,6 +102,13 @@ namespace MOON {
 		m_logText->document()->setDocumentMargin(0);
 		m_logText->setFrameShape(QFrame::NoFrame);
 		m_logText->setContextMenuPolicy(Qt::CustomContextMenu);
+		m_logText->setLineWrapMode(QPlainTextEdit::NoWrap);
+		{
+			QPalette logPalette = m_logText->palette();
+			logPalette.setColor(QPalette::Text, QColor("#c8ccd0"));
+			logPalette.setColor(QPalette::Base, QColor("#2b2b2e"));
+			m_logText->setPalette(logPalette);
+		}
 		mainLayout->addWidget(m_logText, 1);
 
 		setWidget(content);
@@ -164,12 +159,10 @@ namespace MOON {
 	}
 
 	void LogPanel::appendMessage(int level, const QString& line) {
-		QTextCursor cursor(m_logText->document());
-		cursor.movePosition(QTextCursor::End);
-		QTextCharFormat fmt;
-		fmt.setForeground(levelColor(level));
-		cursor.setCharFormat(fmt);
-		cursor.insertText(line + "\n");
+		Q_UNUSED(level);
+		m_logText->appendPlainText(line);
+		m_logText->ensureCursorVisible();
+		m_logText->repaint();
 		m_logText->verticalScrollBar()->setValue(m_logText->verticalScrollBar()->maximum());
 	}
 

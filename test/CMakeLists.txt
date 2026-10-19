@@ -1,4 +1,4 @@
-﻿set(TARGET_NAME TestFilament)
+set(TARGET_NAME TestFilament)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -33,6 +33,9 @@ sample-resources
 
 target_include_directories(${TARGET_NAME} PUBLIC $<BUILD_INTERFACE: ${Extern_DIR}> $<BUILD_INTERFACE: ${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_include_directories(${TARGET_NAME} PRIVATE "${CMAKE_BINARY_DIR}/filament/samples")
+# 材质预览的 IBL 直接读取仓库里的 studio HDR，避免依赖启动时的工作目录
+target_compile_definitions(${TARGET_NAME} PRIVATE
+    QT_FILAMENT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 20)
 

@@ -1,0 +1,123 @@
+#pragma once
+
+#include <QColor>
+#include <QString>
+
+#include <math/vec3.h>
+#include <math/vec4.h>
+#include <utils/Entity.h>
+
+#include <cstdint>
+#include <vector>
+
+namespace filament {
+	class Engine;
+	class IndexBuffer;
+	class IndirectLight;
+	class Material;
+	class MaterialInstance;
+	class Scene;
+	class Skybox;
+	class Texture;
+	class VertexBuffer;
+}
+
+namespace MOON {
+
+	// ----------------------------------------------------------------------------
+	// 材质预览场景
+	//
+	// FilamentApp 持有 Engine / View / Camera / SwapChain；这个类只负责“画什么”：
+	//   - 一个单位 UV 球（TANGENTS 用四元数编码，和 Filament lit 材质兼容）
+	//   - 默认 PBR 材质（samples 里编译好的 aiDefaultMat）
+	//   - studio HDR 预滤波得到的 IBL（间接光 + 可选环境天空盒）
+	//   - 一盏方向光，让金属/粗糙度在 IBL 之外还有明确的高光方向
+	//
+	// 参数修改全部通过 MaterialInstance 立即生效；UI 层不直接接触 Filament 对象。
+	// ----------------------------------------------------------------------------
+	class MaterialPreview {
+	public:
+		MaterialPreview() = default;
+		~MaterialPreview() = default;
+		MaterialPreview(const MaterialPreview&) = delete;
+		MaterialPreview& operator=(const MaterialPreview&) = delete;
+
+		bool initialize(filament::Engine* engine, filament::Scene* scene);
+
+		bool isReady() const {
+			return mEngine != nullptr && mMaterialInstance != nullptr
+				&& static_cast<bool>(mEntity);
+		}
+
+		filament::MaterialInstance* materialInstance() const {
+			return mMaterialInstance;
+		}
+
+		size_t triangleCount() const {
+			return mIndexCount / 3u;
+		}
+
+		QString materialName() const;
+
+		// ---- 默认 PBR 参数（baseColor 以 sRGB 保存，提交给 Filament 时做转换） ----
+		QColor baseColor() const { return mBaseColor; }
+		void setBaseColor(const QColor& color);
+		float metallic() const { return mMetallic; }
+		void setMetallic(float value);
+		float roughness() const { return mRoughness; }
+		void setRoughness(float value);
+		float reflectance() const { return mReflectance; }
+		void setReflectance(float value);
+		void resetMaterial();
+
+		// ---- 环境（IBL） ----
+		float iblIntensity() const { return mIblIntensity; }
+		void setIblIntensity(float value);
+		float iblRotationDegrees() const { return mIblRotationDegrees; }
+		void setIblRotationDegrees(float degrees);
+		bool environmentVisible() const { return mEnvironmentVisible; }
+		void setEnvironmentVisible(bool visible);
+
+	private:
+		bool createMaterial();
+		bool createSphere();
+		void createEnvironment();
+		bool createLights();
+		void applyMaterial();
+		void updateIndirectLight();
+		QString environmentPath() const;
+
+		filament::Engine* mEngine = nullptr;
+		filament::Scene* mScene = nullptr;
+
+		filament::Material* mMaterial = nullptr;
+		filament::MaterialInstance* mMaterialInstance = nullptr;
+
+		filament::VertexBuffer* mVertexBuffer = nullptr;
+		filament::IndexBuffer* mIndexBuffer = nullptr;
+		utils::Entity mEntity;
+		// 上传给 GPU 之前的 CPU 数据必须活到命令执行完；成员变量保证生命周期。
+		std::vector<filament::math::float3> mPositions;
+		std::vector<filament::math::float4> mTangents;
+		std::vector<uint32_t> mIndices;
+		uint32_t mIndexCount = 0;
+
+		// IBL 资源由本类持有（IBLPrefilterContext 只负责生成）
+		filament::Texture* mEnvironmentCubemap = nullptr;
+		filament::Texture* mReflectionCubemap = nullptr;
+		filament::IndirectLight* mIndirectLight = nullptr;
+		filament::Skybox* mEnvironmentSkybox = nullptr;
+		filament::Skybox* mColorSkybox = nullptr;
+		utils::Entity mKeyLight;
+
+		QColor mBaseColor = QColor(184, 184, 184);
+		float mMetallic = 0.0f;
+		float mRoughness = 0.40f;
+		float mReflectance = 0.5f;
+
+		float mIblIntensity = 20000.0f;
+		float mIblRotationDegrees = 0.0f;
+		bool mEnvironmentVisible = false;
+	};
+
+} // namespace MOON

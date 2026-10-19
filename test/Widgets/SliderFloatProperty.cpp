@@ -1,4 +1,4 @@
-﻿#include "Widgets/SliderFloatProperty.h"
+#include "Widgets/SliderFloatProperty.h"
 #include "Widgets/PropertyComponent.h"
 #include "Widgets/sliderwidget.h"
 namespace MOON {
@@ -35,11 +35,12 @@ namespace MOON {
 			auto widget = new FloatSliderWidgetQt(parent);
 			mWidget = widget;
 			widget->setProp(this);
-			widget->setValue(owner->getPropertyValue(mName).toFloat());
+			// 先设置范围与步长，再写入当前值：QDoubleSpinBox 在默认
+			// 范围 [0, 99.99] 内会把 30000 这类大值截断，并反向写回材质。
 			widget->setMinValue(minA);
 			widget->setMaxValue(maxB);
 			widget->setIncrement(step);
-			
+			widget->setValue(owner->getPropertyValue(mName).toFloat());
 		}
 		return mWidget;
 	}
