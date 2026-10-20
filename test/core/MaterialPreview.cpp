@@ -34,6 +34,8 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <limits>
+#include <utility>
 #include <vector>
 
 #ifndef QT_FILAMENT_SOURCE_DIR
@@ -54,6 +56,273 @@ namespace MOON {
 				return { -n.y / denom, n.x / denom, 0.0f, denom * 0.5f };
 			}
 			return { 1.0f, 0.0f, 0.0f, 0.0f }; // n ≈ (0,0,-1)
+		}
+
+		using filament::math::float3;
+
+		// --------------------------------------------------------------------
+		// 预览网格生成
+		// 所有网格都按“最大尺寸 2、中心在原点”归一化，这样相机和灯光
+		// 不需要因为切换网格而重新调整。
+		// --------------------------------------------------------------------
+
+		const char* PreviewMeshName(PreviewMesh mesh) {
+			switch (mesh) {
+			case PreviewMesh::Ball: return "Ball";
+			case PreviewMesh::Cube: return "Cube";
+			case PreviewMesh::Plane: return "Plane";
+			case PreviewMesh::Sphere:
+			default: return "Sphere";
+			}
+		}
+
+		// 标准 UV 球：法线就是单位位置，按纬度/经度生成。
+		void BuildUVSphere(std::vector<float3>& positions,
+			std::vector<float3>& normals, std::vector<uint32_t>& indices) {
+			constexpr uint32_t slices = 128;
+			constexpr uint32_t stacks = 64;
+			constexpr float radius = 1.0f;
+			const uint32_t stride = slices + 1;
+
+			positions.reserve((size_t)(stacks + 1) * stride);
+			normals.reserve((size_t)(stacks + 1) * stride);
+			indices.reserve((size_t)stacks * slices * 6u);
+
+			for (uint32_t stack = 0; stack <= stacks; ++stack) {
+				const float v = (float)stack / (float)stacks;
+				const float theta = v * kPi;
+				const float sinTheta = std::sin(theta);
+				const float cosTheta = std::cos(theta);
+
+				for (uint32_t slice = 0; slice <= slices; ++slice) {
+					const float u = (float)slice / (float)slices;
+					const float phi = u * 2.0f * kPi;
+					const float3 normal{
+						sinTheta * std::cos(phi),
+						cosTheta,
+						sinTheta * std::sin(phi)
+					};
+					positions.push_back(normal * radius);
+					normals.push_back(normal);
+				}
+			}
+
+			for (uint32_t stack = 0; stack < stacks; ++stack) {
+				for (uint32_t slice = 0; slice < slices; ++slice) {
+					const uint32_t i0 = stack * stride + slice;
+					const uint32_t i1 = i0 + 1u;
+					const uint32_t i2 = i0 + stride;
+					const uint32_t i3 = i2 + 1u;
+					// CCW seen from outside（Filament 默认背面剔除）
+					indices.insert(indices.end(), { i0, i1, i2, i1, i3, i2 });
+				}
+			}
+		}
+
+		// 立方体：每个面独立法线，UV 0..1 每面；适合检查平铺/朝向。
+		void BuildCube(std::vector<float3>& positions,
+			std::vector<float3>& normals, std::vector<uint32_t>& indices) {
+			struct Face {
+				float3 normal;
+				float3 tangent;
+				float3 bitangent;
+			};
+
+			// tangent x bitangent == normal，下面反过来的三角形绕序才是朝外的。
+			const Face faces[6] = {
+				{ { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 0.0f, 1.0f, 0.0f } },
+				{ { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
+				{ { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f } },
+				{ { 0.0f, -1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+				{ { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+				{ { 0.0f, 0.0f, -1.0f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+			};
+
+			for (const Face& face : faces) {
+				const uint32_t base = (uint32_t)positions.size();
+				for (int corner = 0; corner < 4; ++corner) {
+					const float u = (corner == 1 || corner == 2) ? 1.0f : 0.0f;
+					const float v = (corner >= 2) ? 1.0f : 0.0f;
+					const float3 position = face.normal
+						+ face.tangent * (u * 2.0f - 1.0f)
+						+ face.bitangent * (v * 2.0f - 1.0f);
+					positions.push_back(position);
+					normals.push_back(face.normal);
+				}
+				indices.insert(indices.end(), {
+					base, base + 2, base + 1,
+					base, base + 3, base + 2 });
+			}
+		}
+
+		// 平面：XY 上的 1x1 方片，面向 +Z（默认相机一侧）。
+		void BuildPlane(std::vector<float3>& positions,
+			std::vector<float3>& normals, std::vector<uint32_t>& indices) {
+			positions = {
+				{ -1.0f, -1.0f, 0.0f },
+				{ 1.0f, -1.0f, 0.0f },
+				{ 1.0f, 1.0f, 0.0f },
+				{ -1.0f, 1.0f, 0.0f },
+			};
+			normals.assign(4, float3{ 0.0f, 0.0f, 1.0f });
+			indices = { 0, 1, 2, 0, 2, 3 };
+		}
+
+		// Filament/Moon 的 material ball：带凹面的球 + 小底座。
+		// 凹面是球半径的径向调制，法线用解析法线求，边缘才会像一圈凸起。
+		void BuildMaterialBall(std::vector<float3>& positions,
+			std::vector<float3>& normals, std::vector<uint32_t>& indices) {
+			constexpr float pi = 3.14159265358979323846f;
+			constexpr uint32_t rings = 32;
+			constexpr uint32_t segments = 64;
+			constexpr float dentAngle = 0.55f;  // 凹面角半径（约 31.5°）
+			constexpr float dentDepth = 0.24f;
+			constexpr float centerY = 0.1f;
+
+			// 统一按“几何法线朝外”来修正绕序，避免底座/极点的镜像三角形。
+			const auto addTriangle = [&](uint32_t a, uint32_t b, uint32_t c) {
+				const float3 positionA = positions[a];
+				const float3 positionB = positions[b];
+				const float3 positionC = positions[c];
+				const float3 geometric = cross(positionB - positionA, positionC - positionA);
+				if (dot(geometric, geometric) < 1.0e-12f) {
+					return;
+				}
+				const float3 averageNormal = normalize(
+					normals[a] + normals[b] + normals[c]);
+				if (dot(geometric, averageNormal) < 0.0f) {
+					std::swap(b, c);
+				}
+				indices.insert(indices.end(), { a, b, c });
+			};
+
+			const uint32_t stride = segments + 1;
+			for (uint32_t ring = 0; ring <= rings; ++ring) {
+				const float v = (float)ring / (float)rings;
+				const float phi = v * pi;
+				const float sinPhi = std::sin(phi);
+				const float cosPhi = std::cos(phi);
+
+				for (uint32_t segment = 0; segment <= segments; ++segment) {
+					const float u = (float)segment / (float)segments;
+					const float theta = u * 2.0f * pi;
+					const float sinTheta = std::sin(theta);
+					const float cosTheta = std::cos(theta);
+
+					const float3 radial{ sinPhi * cosTheta, cosPhi, sinPhi * sinTheta };
+					const float alpha = std::acos(std::clamp(radial.z, -1.0f, 1.0f));
+
+					float radius = 1.0f;
+					float slope = 0.0f; // dR/dalpha
+					if (alpha < dentAngle) {
+						const float t = alpha / dentAngle;
+						radius -= dentDepth * (0.5f + 0.5f * std::cos(pi * t));
+						slope = dentDepth * (0.5f * pi / dentAngle) * std::sin(pi * t);
+					}
+
+					// 径向调制曲面的解析法线：R * e - R' * de/dalpha。
+					const float3 increasingAlpha{
+						cosPhi * cosTheta,
+						-sinPhi,
+						cosPhi * sinTheta
+					};
+					const float3 normal = alpha < 1.0e-4f
+						? radial
+						: normalize(radial * radius - increasingAlpha * slope);
+
+					positions.push_back(radial * radius + float3{ 0.0f, centerY, 0.0f });
+					normals.push_back(normal);
+				}
+			}
+
+			for (uint32_t ring = 0; ring < rings; ++ring) {
+				for (uint32_t segment = 0; segment < segments; ++segment) {
+					const uint32_t a = ring * stride + segment;
+					const uint32_t b = a + stride;
+					addTriangle(a, a + 1, b);
+					addTriangle(a + 1, b + 1, b);
+				}
+			}
+
+			// 底座：绕 Y 轴旋转的 2D 轮廓，上表面接球体底部。
+			struct ProfilePoint {
+				float radius;
+				float height;
+			};
+			static constexpr ProfilePoint profile[] = {
+				{ 0.00f, -0.90f }, { 0.40f, -0.90f }, { 0.44f, -0.93f }, { 0.44f, -1.00f },
+				{ 0.56f, -1.10f }, { 0.60f, -1.14f }, { 0.54f, -1.16f }, { 0.00f, -1.16f }
+			};
+			constexpr uint32_t baseRows = sizeof(profile) / sizeof(profile[0]);
+			constexpr uint32_t baseSegments = 64;
+			constexpr uint32_t baseStride = baseSegments + 1;
+			const uint32_t baseVertexStart = (uint32_t)positions.size();
+
+			for (uint32_t row = 0; row < baseRows; ++row) {
+				const ProfilePoint& current = profile[row];
+				const ProfilePoint& previous = profile[row > 0 ? row - 1 : row];
+				const ProfilePoint& next = profile[row + 1 < baseRows ? row + 1 : row];
+
+				float nr = -(next.height - previous.height);
+				float ny = next.radius - previous.radius;
+				const float length = std::sqrt(nr * nr + ny * ny);
+				if (length > 1.0e-6f) {
+					nr /= length;
+					ny /= length;
+				}
+				else {
+					nr = 0.0f;
+					ny = 1.0f;
+				}
+
+				for (uint32_t segment = 0; segment <= baseSegments; ++segment) {
+					const float u = (float)segment / (float)baseSegments;
+					const float theta = u * 2.0f * pi;
+					const float sinTheta = std::sin(theta);
+					const float cosTheta = std::cos(theta);
+
+					positions.push_back(float3{
+						current.radius * cosTheta,
+						current.height,
+						current.radius * sinTheta });
+					normals.push_back(normalize(float3{
+						nr * cosTheta,
+						ny,
+						nr * sinTheta }));
+				}
+			}
+
+			for (uint32_t row = 0; row + 1 < baseRows; ++row) {
+				for (uint32_t segment = 0; segment < baseSegments; ++segment) {
+					const uint32_t a = baseVertexStart + row * baseStride + segment;
+					const uint32_t b = a + baseStride;
+					addTriangle(a, b, a + 1);
+					addTriangle(a + 1, b, b + 1);
+				}
+			}
+		}
+
+		// 把网格缩放到最大尺寸 2 并居中，保证切换网格后构图不跳。
+		void NormalizeMesh(std::vector<float3>& positions) {
+			if (positions.empty()) {
+				return;
+			}
+
+			constexpr float kMax = std::numeric_limits<float>::max();
+			float3 minB{ kMax, kMax, kMax };
+			float3 maxB{ -kMax, -kMax, -kMax };
+			for (const float3& p : positions) {
+				minB = { std::min(minB.x, p.x), std::min(minB.y, p.y), std::min(minB.z, p.z) };
+				maxB = { std::max(maxB.x, p.x), std::max(maxB.y, p.y), std::max(maxB.z, p.z) };
+			}
+
+			const float3 center = (minB + maxB) * 0.5f;
+			const float3 size = maxB - minB;
+			const float extent = std::max(size.x, std::max(size.y, size.z));
+			const float scale = extent > 1.0e-4f ? 2.0f / extent : 1.0f;
+			for (float3& p : positions) {
+				p = (p - center) * scale;
+			}
 		}
 
 		// 程序化 studio 环境：文件缺失时的兜底 IBL。
@@ -195,8 +464,8 @@ namespace MOON {
 			CORE_ERROR("[Preview] 默认 PBR 材质创建失败");
 			return false;
 		}
-		if (!createSphere()) {
-			CORE_ERROR("[Preview] 材质球网格创建失败");
+		if (!rebuildMesh(mMeshType)) {
+			CORE_ERROR("[Preview] 预览网格创建失败");
 			return false;
 		}
 
@@ -226,54 +495,85 @@ namespace MOON {
 		return true;
 	}
 
-	bool MaterialPreview::createSphere() {
-		// 经纬球：128 条经线、64 条纬线，法线/切线由解析式给出，轮廓足够平滑。
-		constexpr uint32_t kSlices = 128; // 经度
-		constexpr uint32_t kStacks = 64;  // 纬度
-		const float radius = 1.0f;
+	void MaterialPreview::setMeshType(PreviewMesh type) {
+		if (type == mMeshType && static_cast<bool>(mEntity)) {
+			return;
+		}
+		mMeshType = type;
+		if (mEngine && mScene && mMaterialInstance) {
+			rebuildMesh(type);
+		}
+	}
 
-		const uint32_t vertexCount = (kStacks + 1u) * (kSlices + 1u);
-		mPositions.resize(vertexCount);
-		mTangents.resize(vertexCount);
+	bool MaterialPreview::rebuildMesh(PreviewMesh type) {
+		if (!mEngine || !mScene || !mMaterialInstance) {
+			return false;
+		}
+		mMeshType = type;
 
-		for (uint32_t stack = 0; stack <= kStacks; ++stack) {
-			const float v = (float)stack / (float)kStacks;
-			const float theta = v * kPi;
-			const float sinTheta = std::sin(theta);
-			const float cosTheta = std::cos(theta);
-
-			for (uint32_t slice = 0; slice <= kSlices; ++slice) {
-				const float u = (float)slice / (float)kSlices;
-				const float phi = u * 2.0f * kPi;
-				const filament::math::float3 normal{
-					sinTheta * std::cos(phi),
-					cosTheta,
-					sinTheta * std::sin(phi)
-				};
-				const size_t index = (size_t)stack * (kSlices + 1u) + slice;
-				mPositions[index] = normal * radius;
-				mTangents[index] = MakeTangentFrame(normal);
-			}
+		std::vector<float3> positions;
+		std::vector<float3> normals;
+		std::vector<uint32_t> indices;
+		switch (type) {
+		case PreviewMesh::Ball:
+			BuildMaterialBall(positions, normals, indices);
+			break;
+		case PreviewMesh::Cube:
+			BuildCube(positions, normals, indices);
+			break;
+		case PreviewMesh::Plane:
+			BuildPlane(positions, normals, indices);
+			break;
+		case PreviewMesh::Sphere:
+		default:
+			BuildUVSphere(positions, normals, indices);
+			break;
 		}
 
-		mIndices.clear();
-		mIndices.reserve((size_t)kStacks * kSlices * 6u);
-		for (uint32_t stack = 0; stack < kStacks; ++stack) {
-			for (uint32_t slice = 0; slice < kSlices; ++slice) {
-				const uint32_t i0 = stack * (kSlices + 1u) + slice;
-				const uint32_t i1 = i0 + 1u;
-				const uint32_t i2 = i0 + (kSlices + 1u);
-				const uint32_t i3 = i2 + 1u;
-				// 参数化 (theta, phi) 的叉积朝内，因此按 (a, b, c) / (b, d, c) 绕序得到朝外的面。
-				mIndices.push_back(i0);
-				mIndices.push_back(i1);
-				mIndices.push_back(i2);
-				mIndices.push_back(i1);
-				mIndices.push_back(i3);
-				mIndices.push_back(i2);
-			}
+		if (!createRenderable(positions, normals, indices)) {
+			return false;
 		}
+		CORE_INFO("[Preview] 预览网格: {} ({} triangles)",
+			PreviewMeshName(type), triangleCount());
+		return true;
+	}
+
+	bool MaterialPreview::createRenderable(
+		const std::vector<filament::math::float3>& positions,
+		const std::vector<filament::math::float3>& normals,
+		const std::vector<uint32_t>& indices) {
+		using namespace filament::math;
+
+		if (positions.empty() || positions.size() != normals.size() || indices.empty()) {
+			return false;
+		}
+
+		destroyMesh();
+
+		mPositions = positions;
+		mTangents.resize(mPositions.size());
+		for (size_t i = 0; i < mPositions.size(); ++i) {
+			mTangents[i] = MakeTangentFrame(normalize(normals[i]));
+		}
+		mIndices = indices;
 		mIndexCount = (uint32_t)mIndices.size();
+
+		// 统一归一到最大尺寸 2；相机、灯光和 orbit 距离因此对所有网格都成立。
+		NormalizeMesh(mPositions);
+
+		constexpr float kMax = std::numeric_limits<float>::max();
+		float3 minB{ kMax, kMax, kMax };
+		float3 maxB{ -kMax, -kMax, -kMax };
+		for (const float3& p : mPositions) {
+			minB = { std::min(minB.x, p.x), std::min(minB.y, p.y), std::min(minB.z, p.z) };
+			maxB = { std::max(maxB.x, p.x), std::max(maxB.y, p.y), std::max(maxB.z, p.z) };
+		}
+		const float3 center = (minB + maxB) * 0.5f;
+		float3 halfExtent = (maxB - minB) * 0.5f;
+		// 平面在 Z 方向没有厚度，给一个最小包围盒，避免被裁剪掉。
+		halfExtent.x = std::max(halfExtent.x, 0.01f);
+		halfExtent.y = std::max(halfExtent.y, 0.01f);
+		halfExtent.z = std::max(halfExtent.z, 0.01f);
 
 		mVertexBuffer = filament::VertexBuffer::Builder()
 			.vertexCount((uint32_t)mPositions.size())
@@ -303,17 +603,46 @@ namespace MOON {
 
 		mEntity = utils::EntityManager::get().create();
 		filament::RenderableManager::Builder(1)
-			.boundingBox({ { 0.0f, 0.0f, 0.0f }, { 1.05f, 1.05f, 1.05f } })
+			.boundingBox({ center, halfExtent })
 			.material(0, mMaterialInstance)
 			.geometry(0, filament::RenderableManager::PrimitiveType::TRIANGLES,
 				mVertexBuffer, mIndexBuffer, 0, mIndexCount)
-			.culling(true)
+			// 平面从背面看也应该可见；球/立方体/底座保持默认背面剔除。
+			.culling(mMeshType != PreviewMesh::Plane)
 			.receiveShadows(false)
 			.castShadows(false)
 			.build(*mEngine, mEntity);
 
 		mScene->addEntity(mEntity);
 		return true;
+	}
+
+	void MaterialPreview::destroyMesh() {
+		if (mScene && mEntity) {
+			mScene->remove(mEntity);
+		}
+		if (mEngine) {
+			if (mEntity) {
+				mEngine->destroy(mEntity);
+			}
+			if (mVertexBuffer) {
+				mEngine->destroy(mVertexBuffer);
+			}
+			if (mIndexBuffer) {
+				mEngine->destroy(mIndexBuffer);
+			}
+		}
+		if (mEntity) {
+			utils::EntityManager::get().destroy(mEntity);
+		}
+
+		mEntity = utils::Entity();
+		mVertexBuffer = nullptr;
+		mIndexBuffer = nullptr;
+		mPositions.clear();
+		mTangents.clear();
+		mIndices.clear();
+		mIndexCount = 0;
 	}
 
 	void MaterialPreview::createEnvironment() {

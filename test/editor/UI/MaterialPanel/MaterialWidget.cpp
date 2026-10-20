@@ -154,7 +154,8 @@ namespace MOON {
 			mInfo->setObjectName("MaterialInfo");
 			mInfo->setWordWrap(true);
 			auto* hint = new QLabel(
-				"Live PBR preview on a sphere, lit by the default PBR material and a prefiltered studio IBL.",
+				"Live PBR preview on the selected mesh, lit by the default PBR material "
+				"and a prefiltered studio IBL.",
 				mSelf);
 			hint->setObjectName("MaterialHint");
 			hint->setWordWrap(true);

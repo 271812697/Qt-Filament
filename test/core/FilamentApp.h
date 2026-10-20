@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PreviewMesh.h"
+
 #include <QColor>
 #include <QObject>
 #include <QString>
@@ -157,6 +159,10 @@ namespace MOON {
 		MaterialPreview* materialPreview() const { return mPreview; }
 		QString previewMaterialName() const;
 
+		// 预览网格：Sphere / Ball / Cube / Plane
+		PreviewMesh previewMesh() const;
+		void setPreviewMesh(PreviewMesh mesh);
+
 		QColor previewBaseColor() const;
 		void setPreviewBaseColor(const QColor& color);
 		float previewMetallic() const;
@@ -194,6 +200,7 @@ namespace MOON {
 		filament::ColorGrading* mColorGrading = nullptr;
 		filament::Material* mMaterial = nullptr;
 		MaterialPreview* mPreview = nullptr;
+		PreviewMesh mPreviewMesh = PreviewMesh::Sphere;
 		utils::Entity mLight;
 		filament::camutils::Manipulator<float>* mCameraManipulator = nullptr;
 		QString mPendingFilePath; // 引擎就绪前选中的文件

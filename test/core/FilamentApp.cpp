@@ -634,8 +634,10 @@ bool FilamentApp::initialize(QOpenGLWidget* hostWidget, filament::backend::Platf
         (uint32_t)std::max(1, (int)std::lround(hostWidget->height() * dpr));
     mView->setViewport({ 0, 0, renderWidth, renderHeight });
 
-    // 场景内容：单位材质球 + 默认 PBR 材质 + studio IBL + 方向光
+    // 场景内容：预览网格 + 默认 PBR 材质 + studio IBL + 方向光
     mPreview = new MaterialPreview();
+    // 引擎就绪前用户可能已经选了 Ball/Cube/Plane；先记住，initialize 时直接建对应网格。
+    mPreview->setMeshType(mPreviewMesh);
     if (!mPreview->initialize(mEngine, mScene)) {
         CORE_ERROR("[Preview] 材质预览场景初始化失败");
         return false;
@@ -686,6 +688,17 @@ void FilamentApp::createPreviewCamera() {
 
 QString FilamentApp::previewMaterialName() const {
     return mPreview ? mPreview->materialName() : QStringLiteral("Default PBR");
+}
+
+PreviewMesh FilamentApp::previewMesh() const {
+    return mPreview ? mPreview->meshType() : mPreviewMesh;
+}
+
+void FilamentApp::setPreviewMesh(PreviewMesh mesh) {
+    mPreviewMesh = mesh;
+    if (mPreview) {
+        mPreview->setMeshType(mesh);
+    }
 }
 
 QColor FilamentApp::previewBaseColor() const {

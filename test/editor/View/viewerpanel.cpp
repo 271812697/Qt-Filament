@@ -2,7 +2,9 @@
 #include "viewerwidget.h"
 
 #include "core/FilamentApp.h"
+#include "core/PreviewMesh.h"
 
+#include <QComboBox>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -25,6 +27,12 @@ namespace MOON {
 				border-radius: 3px; padding: 2px 8px; margin-right: 4px;
 			}
 			QPushButton#PreviewReset:hover { background: #3a3a3e; border-color: #268bd2; }
+			QComboBox#PreviewMeshCombo {
+				color: #c8ccd0; background: #232326; border: 1px solid #3a3a3e;
+				border-radius: 3px; padding: 1px 6px; min-width: 74px;
+			}
+			QComboBox#PreviewMeshCombo:hover { border-color: #268bd2; }
+			QComboBox#PreviewMeshCombo::drop-down { border: none; width: 16px; }
 		)");
 		auto* headerLayout = new QHBoxLayout(header);
 		headerLayout->setContentsMargins(0, 0, 0, 0);
@@ -32,6 +40,16 @@ namespace MOON {
 
 		auto* title = new QLabel("MATERIAL PREVIEW", header);
 		title->setObjectName("PreviewTitle");
+
+		auto* meshCombo = new QComboBox(header);
+		meshCombo->setObjectName("PreviewMeshCombo");
+		meshCombo->setToolTip("Preview mesh: Sphere / Ball / Cube / Plane");
+		meshCombo->addItem("Sphere", static_cast<int>(PreviewMesh::Sphere));
+		meshCombo->addItem("Ball", static_cast<int>(PreviewMesh::Ball));
+		meshCombo->addItem("Cube", static_cast<int>(PreviewMesh::Cube));
+		meshCombo->addItem("Plane", static_cast<int>(PreviewMesh::Plane));
+		meshCombo->setCurrentIndex((int)FilamentApp::instance().previewMesh());
+
 		auto* hint = new QLabel(
 			"Left drag: orbit  ·  Middle/Right drag: pan  ·  Wheel: zoom  ·  Double-click: reset",
 			header);
@@ -42,6 +60,8 @@ namespace MOON {
 		reset->setToolTip("Reset the preview camera (R)");
 
 		headerLayout->addWidget(title);
+		headerLayout->addSpacing(10);
+		headerLayout->addWidget(meshCombo);
 		headerLayout->addWidget(hint, 1);
 		headerLayout->addWidget(reset);
 
@@ -55,6 +75,12 @@ namespace MOON {
 		connect(reset, &QPushButton::clicked, this, []() {
 			FilamentApp::instance().resetPreviewCamera();
 		});
+
+		connect(meshCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, [meshCombo](int) {
+				FilamentApp::instance().setPreviewMesh(
+					static_cast<PreviewMesh>(meshCombo->currentData().toInt()));
+			});
 
 		// default to strong focus
 		this->setFocusPolicy(Qt::StrongFocus);

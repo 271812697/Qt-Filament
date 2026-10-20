@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PreviewMesh.h"
+
 #include <QColor>
 #include <QString>
 
@@ -57,6 +59,10 @@ namespace MOON {
 			return mIndexCount / 3u;
 		}
 
+		// ---- 预览网格（Sphere / Ball / Cube / Plane） ----
+		PreviewMesh meshType() const { return mMeshType; }
+		void setMeshType(PreviewMesh type);
+
 		QString materialName() const;
 
 		// ---- 默认 PBR 参数（baseColor 以 sRGB 保存，提交给 Filament 时做转换） ----
@@ -80,7 +86,11 @@ namespace MOON {
 
 	private:
 		bool createMaterial();
-		bool createSphere();
+		bool rebuildMesh(PreviewMesh type);
+		bool createRenderable(const std::vector<filament::math::float3>& positions,
+			const std::vector<filament::math::float3>& normals,
+			const std::vector<uint32_t>& indices);
+		void destroyMesh();
 		void createEnvironment();
 		bool createLights();
 		void applyMaterial();
@@ -101,6 +111,7 @@ namespace MOON {
 		std::vector<filament::math::float4> mTangents;
 		std::vector<uint32_t> mIndices;
 		uint32_t mIndexCount = 0;
+		PreviewMesh mMeshType = PreviewMesh::Sphere;
 
 		// IBL 资源由本类持有（IBLPrefilterContext 只负责生成）
 		filament::Texture* mEnvironmentCubemap = nullptr;
