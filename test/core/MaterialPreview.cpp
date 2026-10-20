@@ -13,12 +13,15 @@
 #include <filament/Scene.h>
 #include <filament/Skybox.h>
 #include <filament/Texture.h>
+#include <filament/TextureSampler.h>
 #include <filament/VertexBuffer.h>
 
 #include <filament-iblprefilter/IBLPrefilterContext.h>
 #include <imageio/ImageDecoder.h>
 #include <image/LinearImage.h>
 #include <stb_image.h>
+
+
 
 #include <math/mat3.h>
 #include <math/scalar.h>
@@ -585,7 +588,47 @@ namespace MOON {
 		return QStringLiteral("Default PBR (aiDefaultMat)");
 	}
 
-	bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scene) {
+	namespace {
+	filament::Texture* CreateSolidTexture(filament::Engine* engine, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+	{
+		auto* pixels = new uint8_t[4] { r, g, b, a };
+		auto* texture = filament::Texture::Builder()
+			.width(1).height(1).levels(1)
+			.format(filament::Texture::InternalFormat::RGBA8)
+			.sampler(filament::Texture::Sampler::SAMPLER_2D)
+			.build(*engine);
+		if (texture) {
+			filament::Texture::PixelBufferDescriptor buffer(pixels, 4,
+				filament::Texture::Format::RGBA, filament::Texture::Type::UBYTE,
+				[](void* data, size_t, void*) { delete[] static_cast<uint8_t*>(data); });
+			texture->setImage(*engine, 0, std::move(buffer));
+		}
+		return texture;
+	}
+
+	filament::Texture* LoadTexture(filament::Engine* engine, const QString& path, bool srgb)
+	{
+		if (path.isEmpty()) return nullptr;
+		int width = 0, height = 0, channels = 0;
+		stbi_set_flip_vertically_on_load(true);
+		unsigned char* data = stbi_load(path.toUtf8().constData(), &width, &height, &channels, 4);
+		if (!data) return nullptr;
+		auto* texture = filament::Texture::Builder()
+			.width((uint32_t)width).height((uint32_t)height).levels(1)
+			.format(srgb ? filament::Texture::InternalFormat::SRGB8_A8 : filament::Texture::InternalFormat::RGBA8)
+			.sampler(filament::Texture::Sampler::SAMPLER_2D)
+			.build(*engine);
+		if (texture) {
+			filament::Texture::PixelBufferDescriptor buffer(data, (size_t)width * height * 4,
+				filament::Texture::Format::RGBA, filament::Texture::Type::UBYTE,
+				[](void* buffer, size_t, void*) { stbi_image_free(buffer); }, data);
+			texture->setImage(*engine, 0, std::move(buffer));
+		}
+		return texture;
+	}
+}
+
+bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scene) {
 		if (!engine || !scene) {
 			return false;
 		}
@@ -594,6 +637,11 @@ namespace MOON {
 		}
 
 		mEngine = engine;
+		{
+			mWhiteTexture = CreateSolidTexture(engine, 255, 255, 255, 255);
+			mBlackTexture = CreateSolidTexture(engine, 0, 0, 0, 255);
+			mFlatNormalTexture = CreateSolidTexture(engine, 128, 128, 255, 255);
+		}
 		mScene = scene;
 
 		if (!createMaterial()) {
@@ -909,7 +957,7 @@ namespace MOON {
 		return true;
 	}
 
-	void MaterialPreview::applyMaterial() {
+void MaterialPreview::applyMaterial() {
 		if (!mMaterialInstance) {
 			return;
 		}
@@ -921,6 +969,17 @@ namespace MOON {
 		mMaterialInstance->setParameter("metallic", mMetallic);
 		mMaterialInstance->setParameter("roughness", mRoughness);
 		mMaterialInstance->setParameter("reflectance", mReflectance);
+		mMaterialInstance->setParameter("clearCoat", mClearCoat);
+		mMaterialInstance->setParameter("clearCoatRoughness", mClearCoatRoughness);
+		mMaterialInstance->setParameter("transmission", mTransmission);
+		mMaterialInstance->setParameter("ior", mIor);
+		mMaterialInstance->setParameter("thickness", mThickness);
+		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
 	}
 
 	void MaterialPreview::resetMaterial() {
@@ -957,7 +1016,111 @@ namespace MOON {
 		mReflectance = std::clamp(value, 0.0f, 1.0f);
 		if (mMaterialInstance) {
 			mMaterialInstance->setParameter("reflectance", mReflectance);
+		mMaterialInstance->setParameter("clearCoat", mClearCoat);
+		mMaterialInstance->setParameter("clearCoatRoughness", mClearCoatRoughness);
+		mMaterialInstance->setParameter("transmission", mTransmission);
+		mMaterialInstance->setParameter("ior", mIor);
+		mMaterialInstance->setParameter("thickness", mThickness);
+		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
 		}
+	}
+
+	void MaterialPreview::setClearCoat(float value) {
+		mClearCoat = std::clamp(value, 0.0f, 1.0f);
+		if (mMaterialInstance) {
+			mMaterialInstance->setParameter("clearCoat", mClearCoat);
+		}
+	}
+
+	void MaterialPreview::setClearCoatRoughness(float value) {
+		mClearCoatRoughness = std::clamp(value, 0.0f, 1.0f);
+		if (mMaterialInstance) {
+			mMaterialInstance->setParameter("clearCoatRoughness", mClearCoatRoughness);
+		mMaterialInstance->setParameter("transmission", mTransmission);
+		mMaterialInstance->setParameter("ior", mIor);
+		mMaterialInstance->setParameter("thickness", mThickness);
+		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
+		}
+	}
+
+	void MaterialPreview::setThickness(float value) {
+		mThickness = std::clamp(value, 0.0f, 10.0f);
+		if (mMaterialInstance) {
+			mMaterialInstance->setParameter("thickness", mThickness);
+		}
+	}
+
+	void MaterialPreview::setTransmission(float value) {
+		mTransmission = std::clamp(value, 0.0f, 1.0f);
+		if (mMaterialInstance) {
+			mMaterialInstance->setParameter("transmission", mTransmission);
+		}
+	}
+
+	void MaterialPreview::setIor(float value) {
+		mIor = std::clamp(value, 1.0f, 3.0f);
+		if (mMaterialInstance) {
+			mMaterialInstance->setParameter("ior", mIor);
+		mMaterialInstance->setParameter("thickness", mThickness);
+		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
+		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
+		}
+	}
+
+	void MaterialPreview::setAlbedoMap(const QString& path) {
+		if (mAlbedoTexture) { mEngine->destroy(mAlbedoTexture); mAlbedoTexture = nullptr; }
+		mAlbedoMapPath = path;
+		mAlbedoTexture = LoadTexture(mEngine, path, true);
+		applyMaterial();
+	}
+
+	void MaterialPreview::setMetallicMap(const QString& path) {
+		if (mMetallicTexture) { mEngine->destroy(mMetallicTexture); mMetallicTexture = nullptr; }
+		mMetallicMapPath = path;
+		mMetallicTexture = LoadTexture(mEngine, path, false);
+		applyMaterial();
+	}
+
+	void MaterialPreview::setRoughnessMap(const QString& path) {
+		if (mRoughnessTexture) { mEngine->destroy(mRoughnessTexture); mRoughnessTexture = nullptr; }
+		mRoughnessMapPath = path;
+		mRoughnessTexture = LoadTexture(mEngine, path, false);
+		applyMaterial();
+	}
+
+	void MaterialPreview::setAoMap(const QString& path) {
+		if (mAoTexture) { mEngine->destroy(mAoTexture); mAoTexture = nullptr; }
+		mAoMapPath = path;
+		mAoTexture = LoadTexture(mEngine, path, false);
+		applyMaterial();
+	}
+
+	void MaterialPreview::setNormalMap(const QString& path) {
+		if (mNormalTexture) { mEngine->destroy(mNormalTexture); mNormalTexture = nullptr; }
+		mNormalMapPath = path;
+		mNormalTexture = LoadTexture(mEngine, path, false);
+		applyMaterial();
+	}
+
+	void MaterialPreview::setEmissiveMap(const QString& path) {
+		if (mEmissiveTexture) { mEngine->destroy(mEmissiveTexture); mEmissiveTexture = nullptr; }
+		mEmissiveMapPath = path;
+		mEmissiveTexture = LoadTexture(mEngine, path, true);
+		applyMaterial();
 	}
 
 	void MaterialPreview::setIblIntensity(float value) {
@@ -992,27 +1155,32 @@ namespace MOON {
 	}
 
 	QString MaterialPreview::environmentPath() const {
-		// 优先使用随仓库带的高质量 studio HDR；路径通过 CMake 的
-		// QT_FILAMENT_SOURCE_DIR 注入，避免依赖启动时的工作目录。
+		// Use the same Studio.hdr as Moon so the material previews can be compared
+		// directly. studio_small_02_2k.hdr is a different, much more colourful
+		// environment and remains only as a fallback.
 		const QString sourceDir = QStringLiteral(QT_FILAMENT_SOURCE_DIR);
 		QStringList candidates;
 		if (!sourceDir.isEmpty()) {
 			candidates
-				<< sourceDir + "/filament/third_party/environments/studio_small_02_2k.hdr"
+				<< sourceDir + "/filament/third_party/environments/Studio.hdr"
 				<< sourceDir + "/filament/third_party/environments/lightroom_14b.hdr"
+				<< sourceDir + "/filament/third_party/environments/studio_small_02_2k.hdr"
 				<< sourceDir + "/filament/assets/environments/white_furnace/white_furnace.exr";
 		}
 		candidates
-			<< QStringLiteral("filament/third_party/environments/studio_small_02_2k.hdr")
-			<< QStringLiteral("filament/third_party/environments/lightroom_14b.hdr");
+			<< QStringLiteral("filament/third_party/environments/Studio.hdr")
+			<< QStringLiteral("filament/third_party/environments/lightroom_14b.hdr")
+			<< QStringLiteral("filament/third_party/environments/studio_small_02_2k.hdr");
 
 		// 从 exe 目录逐级往上找，覆盖从 build/test/Debug 直接启动的情况。
 		QDir directory(QCoreApplication::applicationDirPath());
 		for (int level = 0; level < 6; ++level) {
 			candidates << directory.filePath(
-				"filament/third_party/environments/studio_small_02_2k.hdr");
+				"filament/third_party/environments/Studio.hdr");
 			candidates << directory.filePath(
 				"filament/third_party/environments/lightroom_14b.hdr");
+			candidates << directory.filePath(
+				"filament/third_party/environments/studio_small_02_2k.hdr");
 			if (!directory.cdUp()) {
 				break;
 			}

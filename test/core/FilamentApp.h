@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "PreviewMesh.h"
 
@@ -171,6 +171,22 @@ namespace MOON {
 		void setPreviewRoughness(float value);
 		float previewReflectance() const;
 		void setPreviewReflectance(float value);
+		float previewClearCoat() const;
+		void setPreviewClearCoat(float value);
+		float previewClearCoatRoughness() const;
+		void setPreviewClearCoatRoughness(float value);
+		float previewTransmission() const;
+		void setPreviewTransmission(float value);
+		float previewIor() const;
+		void setPreviewIor(float value);
+		float previewThickness() const;
+		void setPreviewThickness(float value);
+		QString previewAlbedoMap() const; void setPreviewAlbedoMap(const QString&);
+		QString previewMetallicMap() const; void setPreviewMetallicMap(const QString&);
+		QString previewRoughnessMap() const; void setPreviewRoughnessMap(const QString&);
+		QString previewAoMap() const; void setPreviewAoMap(const QString&);
+		QString previewNormalMap() const; void setPreviewNormalMap(const QString&);
+		QString previewEmissiveMap() const; void setPreviewEmissiveMap(const QString&);
 		void resetPreviewMaterial();
 
 		float previewIblIntensity() const;

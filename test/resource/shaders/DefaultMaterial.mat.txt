@@ -1,6 +1,8 @@
-material {
+﻿material {
     name : AssimpDefaultMat,
     shadingModel : lit,
+    refractionMode : cubemap,
+    refractionType : solid,
     parameters : [
         {
             type : float3,
@@ -17,16 +19,53 @@ material {
         {
             type : float,
             name : reflectance
-        }
+        },
+        {
+            type : float,
+            name : clearCoat
+        },
+        {
+            type : float,
+            name : clearCoatRoughness
+        },
+        {
+            type : float,
+            name : transmission
+        },
+        {
+            type : float,
+            name : ior
+        },
+        {
+            type : float,
+            name : thickness
+        },
+        { type : sampler2d, name : albedoMap },
+        { type : sampler2d, name : metallicMap },
+        { type : sampler2d, name : roughnessMap },
+        { type : sampler2d, name : aoMap },
+        { type : sampler2d, name : normalMap },
+        { type : sampler2d, name : emissiveMap }
     ],
+    requires : [ uv0 ]
 }
 
 fragment {
     void material(inout MaterialInputs material) {
+        vec2 uv = getUV0();
+        // The normal map must be set before prepareMaterial().
+        material.normal = texture(materialParams_normalMap, uv).xyz * 2.0 - 1.0;
         prepareMaterial(material);
-        material.baseColor.rgb = materialParams.baseColor;
-        material.metallic = materialParams.metallic;
-        material.roughness = materialParams.roughness;
+        material.baseColor.rgb = materialParams.baseColor * texture(materialParams_albedoMap, uv).rgb;
+        material.metallic = materialParams.metallic * texture(materialParams_metallicMap, uv).b;
+        material.roughness = materialParams.roughness * texture(materialParams_roughnessMap, uv).g;
         material.reflectance = materialParams.reflectance;
+        material.ambientOcclusion = texture(materialParams_aoMap, uv).r;
+        material.emissive.rgb = texture(materialParams_emissiveMap, uv).rgb;
+        material.clearCoat = materialParams.clearCoat;
+        material.clearCoatRoughness = materialParams.clearCoatRoughness;
+        material.transmission = materialParams.transmission;
+        material.ior = materialParams.ior;
+        material.thickness = materialParams.thickness;
     }
 }

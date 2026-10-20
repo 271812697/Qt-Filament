@@ -1,4 +1,4 @@
-#include "FilamentApp.h"
+﻿#include "FilamentApp.h"
 #include "MaterialPreview.h"
 #include "log.h"
 
@@ -738,6 +738,74 @@ float FilamentApp::previewReflectance() const {
 void FilamentApp::setPreviewReflectance(float value) {
     if (mPreview) {
         mPreview->setReflectance(value);
+    }
+}
+
+float FilamentApp::previewClearCoat() const {
+    return mPreview ? mPreview->clearCoat() : 0.0f;
+}
+
+void FilamentApp::setPreviewClearCoat(float value) {
+    if (mPreview) {
+        mPreview->setClearCoat(value);
+    }
+}
+
+float FilamentApp::previewClearCoatRoughness() const {
+    return mPreview ? mPreview->clearCoatRoughness() : 0.0f;
+}
+
+void FilamentApp::setPreviewClearCoatRoughness(float value) {
+    if (mPreview) {
+        mPreview->setClearCoatRoughness(value);
+    }
+}
+
+float FilamentApp::previewTransmission() const {
+    return mPreview ? mPreview->transmission() : 0.0f;
+}
+
+void FilamentApp::setPreviewTransmission(float value) {
+    if (mPreview) {
+        mPreview->setTransmission(value);
+    }
+}
+
+float FilamentApp::previewIor() const {
+    return mPreview ? mPreview->ior() : 1.5f;
+}
+
+void FilamentApp::setPreviewIor(float value) {
+    if (mPreview) {
+        mPreview->setIor(value);
+    }
+}
+
+QString FilamentApp::previewAlbedoMap() const { return mPreview ? mPreview->albedoMap() : QString(); }
+void FilamentApp::setPreviewAlbedoMap(const QString& p) { if (mPreview) mPreview->setAlbedoMap(p); }
+
+QString FilamentApp::previewMetallicMap() const { return mPreview ? mPreview->metallicMap() : QString(); }
+void FilamentApp::setPreviewMetallicMap(const QString& p) { if (mPreview) mPreview->setMetallicMap(p); }
+
+QString FilamentApp::previewRoughnessMap() const { return mPreview ? mPreview->roughnessMap() : QString(); }
+void FilamentApp::setPreviewRoughnessMap(const QString& p) { if (mPreview) mPreview->setRoughnessMap(p); }
+
+QString FilamentApp::previewAoMap() const { return mPreview ? mPreview->aoMap() : QString(); }
+void FilamentApp::setPreviewAoMap(const QString& p) { if (mPreview) mPreview->setAoMap(p); }
+
+QString FilamentApp::previewNormalMap() const { return mPreview ? mPreview->normalMap() : QString(); }
+void FilamentApp::setPreviewNormalMap(const QString& p) { if (mPreview) mPreview->setNormalMap(p); }
+
+QString FilamentApp::previewEmissiveMap() const { return mPreview ? mPreview->emissiveMap() : QString(); }
+void FilamentApp::setPreviewEmissiveMap(const QString& p) { if (mPreview) mPreview->setEmissiveMap(p); }
+
+float FilamentApp::previewThickness() const {
+    return mPreview ? mPreview->thickness() : 1.0f;
+}
+
+void FilamentApp::setPreviewThickness(float value) {
+    if (mPreview) {
+        mPreview->setThickness(value);
     }
 }
 

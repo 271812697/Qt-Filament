@@ -73,7 +73,29 @@ namespace MOON {
 		float roughness() const { return mRoughness; }
 		void setRoughness(float value);
 		float reflectance() const { return mReflectance; }
+		float clearCoat() const { return mClearCoat; }
+		float clearCoatRoughness() const { return mClearCoatRoughness; }
+		float transmission() const { return mTransmission; }
+		float ior() const { return mIor; }
+		float thickness() const { return mThickness; }
+		QString albedoMap() const { return mAlbedoMapPath; }
+		QString metallicMap() const { return mMetallicMapPath; }
+		QString roughnessMap() const { return mRoughnessMapPath; }
+		QString aoMap() const { return mAoMapPath; }
+		QString normalMap() const { return mNormalMapPath; }
+		QString emissiveMap() const { return mEmissiveMapPath; }
 		void setReflectance(float value);
+		void setClearCoat(float value);
+		void setClearCoatRoughness(float value);
+		void setTransmission(float value);
+		void setIor(float value);
+		void setThickness(float value);
+		void setAlbedoMap(const QString& path);
+		void setMetallicMap(const QString& path);
+		void setRoughnessMap(const QString& path);
+		void setAoMap(const QString& path);
+		void setNormalMap(const QString& path);
+		void setEmissiveMap(const QString& path);
 		void resetMaterial();
 
 		// ---- 环境（IBL） ----
@@ -125,6 +147,21 @@ namespace MOON {
 		float mMetallic = 0.0f;
 		float mRoughness = 0.40f;
 		float mReflectance = 0.5f;
+		float mClearCoat = 0.0f;
+		float mClearCoatRoughness = 0.0f;
+		float mTransmission = 0.0f;
+		float mIor = 1.5f;
+		float mThickness = 1.0f;
+		QString mAlbedoMapPath, mMetallicMapPath, mRoughnessMapPath, mAoMapPath, mNormalMapPath, mEmissiveMapPath;
+		filament::Texture* mAlbedoTexture = nullptr;
+		filament::Texture* mMetallicTexture = nullptr;
+		filament::Texture* mRoughnessTexture = nullptr;
+		filament::Texture* mAoTexture = nullptr;
+		filament::Texture* mNormalTexture = nullptr;
+		filament::Texture* mEmissiveTexture = nullptr;
+		filament::Texture* mWhiteTexture = nullptr;
+		filament::Texture* mBlackTexture = nullptr;
+		filament::Texture* mFlatNormalTexture = nullptr;
 
 		float mIblIntensity = 20000.0f;
 		float mIblRotationDegrees = 0.0f;

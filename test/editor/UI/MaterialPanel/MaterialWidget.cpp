@@ -8,6 +8,7 @@
 #include "Widgets/Property.h"
 #include "Widgets/PropertyComponent.h"
 #include "Widgets/SliderFloatProperty.h"
+#include "Widgets/TextureProperty.h"
 
 #include <QColor>
 #include <QHBoxLayout>
@@ -41,6 +42,34 @@ namespace MOON {
 				auto* reflectance = new SliderFloatProperty("Reflectance", this, 0.0f, 1.0f);
 				reflectance->setStep(0.01f);
 				addProperty(reflectance);
+
+				auto* clearCoat = new SliderFloatProperty("Clear Coat", this, 0.0f, 1.0f);
+				clearCoat->setStep(0.01f);
+				addProperty(clearCoat);
+
+				auto* clearCoatRoughness =
+					new SliderFloatProperty("Clear Coat Roughness", this, 0.0f, 1.0f);
+				clearCoatRoughness->setStep(0.01f);
+				addProperty(clearCoatRoughness);
+
+				auto* transmission = new SliderFloatProperty("Transmission", this, 0.0f, 1.0f);
+				transmission->setStep(0.01f);
+				addProperty(transmission);
+
+				auto* ior = new SliderFloatProperty("Refraction Index", this, 1.0f, 3.0f);
+				ior->setStep(0.01f);
+				addProperty(ior);
+
+				auto* thickness = new SliderFloatProperty("Thickness", this, 0.0f, 10.0f);
+				thickness->setStep(0.01f);
+				addProperty(thickness);
+
+				addProperty(new TextureProperty("Albedo Map", this));
+				addProperty(new TextureProperty("Metallic Map", this));
+				addProperty(new TextureProperty("Roughness Map", this));
+				addProperty(new TextureProperty("AO Map", this));
+				addProperty(new TextureProperty("Normal Map", this));
+				addProperty(new TextureProperty("Emissive Map", this));
 			}
 
 			QVariant getPropertyValue(const QString& name) override {
@@ -49,6 +78,17 @@ namespace MOON {
 				if (name == "Metallic") return app.previewMetallic();
 				if (name == "Roughness") return app.previewRoughness();
 				if (name == "Reflectance") return app.previewReflectance();
+				if (name == "Clear Coat") return app.previewClearCoat();
+				if (name == "Clear Coat Roughness") return app.previewClearCoatRoughness();
+				if (name == "Transmission") return app.previewTransmission();
+				if (name == "Refraction Index") return app.previewIor();
+				if (name == "Thickness") return app.previewThickness();
+				if (name == "Albedo Map") return app.previewAlbedoMap();
+				if (name == "Metallic Map") return app.previewMetallicMap();
+				if (name == "Roughness Map") return app.previewRoughnessMap();
+				if (name == "AO Map") return app.previewAoMap();
+				if (name == "Normal Map") return app.previewNormalMap();
+				if (name == "Emissive Map") return app.previewEmissiveMap();
 				return {};
 			}
 
@@ -65,6 +105,39 @@ namespace MOON {
 				}
 				else if (name == "Reflectance") {
 					app.setPreviewReflectance(value.toFloat());
+				}
+				else if (name == "Clear Coat") {
+					app.setPreviewClearCoat(value.toFloat());
+				}
+				else if (name == "Clear Coat Roughness") {
+					app.setPreviewClearCoatRoughness(value.toFloat());
+				}
+				else if (name == "Transmission") {
+					app.setPreviewTransmission(value.toFloat());
+				}
+				else if (name == "Refraction Index") {
+					app.setPreviewIor(value.toFloat());
+				}
+				else if (name == "Thickness") {
+					app.setPreviewThickness(value.toFloat());
+				}
+				else if (name == "Albedo Map") {
+					app.setPreviewAlbedoMap(value.toString());
+				}
+				else if (name == "Metallic Map") {
+					app.setPreviewMetallicMap(value.toString());
+				}
+				else if (name == "Roughness Map") {
+					app.setPreviewRoughnessMap(value.toString());
+				}
+				else if (name == "AO Map") {
+					app.setPreviewAoMap(value.toString());
+				}
+				else if (name == "Normal Map") {
+					app.setPreviewNormalMap(value.toString());
+				}
+				else if (name == "Emissive Map") {
+					app.setPreviewEmissiveMap(value.toString());
 				}
 			}
 
