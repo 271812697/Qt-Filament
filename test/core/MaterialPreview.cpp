@@ -33,8 +33,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <sstream>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -302,6 +306,138 @@ namespace MOON {
 			}
 		}
 
+		// 在源码目录 / 当前目录 / exe 上级目录中查找仓库自带资源。
+		QString ResolveRepoAsset(const QString& relative) {
+			const QString sourceDir = QStringLiteral(QT_FILAMENT_SOURCE_DIR);
+			QStringList candidates;
+			if (!sourceDir.isEmpty()) {
+				candidates << sourceDir + "/" + relative;
+			}
+			candidates << relative;
+
+			QDir directory(QCoreApplication::applicationDirPath());
+			for (int level = 0; level < 6; ++level) {
+				candidates << directory.filePath(relative);
+				if (!directory.cdUp()) {
+					break;
+				}
+			}
+
+			for (const QString& candidate : candidates) {
+				if (QFileInfo::exists(candidate)) {
+					return candidate;
+				}
+			}
+			return {};
+		}
+
+		// 读取 OBJ 的 position + normal + triangle indices。
+		// 预览网格只关心形状和法线，UV/材质组都忽略。
+		bool LoadObjMesh(const QString& path,
+			std::vector<float3>& positions,
+			std::vector<float3>& normals,
+			std::vector<uint32_t>& indices) {
+			using namespace filament::math;
+
+			const QByteArray nativePath = QDir::toNativeSeparators(path).toLocal8Bit();
+			std::ifstream stream(nativePath.constData());
+			if (!stream.is_open()) {
+				return false;
+			}
+
+			std::vector<float3> objPositions;
+			std::vector<float3> objNormals;
+			std::unordered_map<uint64_t, uint32_t> vertexMap;
+			std::string line;
+
+			while (std::getline(stream, line)) {
+				if (line.size() < 2) {
+					continue;
+				}
+
+				if (line[0] == 'v' && line[1] == ' ') {
+					std::istringstream values(line.substr(1));
+					float x = 0.0f, y = 0.0f, z = 0.0f;
+					if (values >> x >> y >> z) {
+						objPositions.push_back(float3{ x, y, z });
+					}
+				}
+				else if (line[0] == 'v' && line[1] == 'n' &&
+					line.size() > 2 && line[2] == ' ') {
+					std::istringstream values(line.substr(2));
+					float x = 0.0f, y = 0.0f, z = 0.0f;
+					if (values >> x >> y >> z) {
+						objNormals.push_back(float3{ x, y, z });
+					}
+				}
+				else if (line[0] == 'f' && line[1] == ' ') {
+					std::istringstream values(line.substr(1));
+					std::vector<uint32_t> face;
+					std::string token;
+					bool valid = true;
+
+					while (values >> token) {
+						const size_t firstSlash = token.find('/');
+						const int positionIndex = std::atoi(token.c_str());
+
+						int normalIndex = 0;
+						if (firstSlash != std::string::npos) {
+							const size_t secondSlash = token.find('/', firstSlash + 1);
+							if (secondSlash != std::string::npos && secondSlash + 1 < token.size()) {
+								normalIndex = std::atoi(token.c_str() + secondSlash + 1);
+							}
+						}
+
+						const int position = positionIndex > 0
+							? positionIndex - 1
+							: (positionIndex < 0 ? (int)objPositions.size() + positionIndex : -1);
+						const int normal = normalIndex > 0
+							? normalIndex - 1
+							: (normalIndex < 0 ? (int)objNormals.size() + normalIndex : -1);
+						if (position < 0 || position >= (int)objPositions.size() ||
+							normal < 0 || normal >= (int)objNormals.size()) {
+							valid = false;
+							break;
+						}
+
+						const uint64_t key =
+							((uint64_t)(uint32_t)position << 32) | (uint32_t)normal;
+						auto found = vertexMap.find(key);
+						uint32_t index = 0;
+						if (found == vertexMap.end()) {
+							index = (uint32_t)positions.size();
+							positions.push_back(objPositions[position]);
+							const float3 sourceNormal = objNormals[normal];
+							const float lengthSquared = dot(sourceNormal, sourceNormal);
+							normals.push_back(lengthSquared > 1.0e-12f
+								? sourceNormal / std::sqrt(lengthSquared)
+								: float3{ 0.0f, 1.0f, 0.0f });
+							vertexMap.emplace(key, index);
+						}
+						else {
+							index = found->second;
+						}
+						face.push_back(index);
+					}
+
+					if (!valid || face.size() < 3) {
+						positions.clear();
+						normals.clear();
+						indices.clear();
+						return false;
+					}
+
+					for (size_t i = 1; i + 1 < face.size(); ++i) {
+						indices.push_back(face[0]);
+						indices.push_back(face[i]);
+						indices.push_back(face[i + 1]);
+					}
+				}
+			}
+
+			return !positions.empty() && positions.size() == normals.size() && !indices.empty();
+		}
+
 		// 把网格缩放到最大尺寸 2 并居中，保证切换网格后构图不跳。
 		void NormalizeMesh(std::vector<float3>& positions) {
 			if (positions.empty()) {
@@ -515,9 +651,21 @@ namespace MOON {
 		std::vector<float3> normals;
 		std::vector<uint32_t> indices;
 		switch (type) {
-		case PreviewMesh::Ball:
-			BuildMaterialBall(positions, normals, indices);
+		case PreviewMesh::Ball: {
+			// 和 Moon / Filament 的材质预览一致：优先加载 Filament 自带的
+			// material_sphere.obj；只有资源缺失时才退回程序化球座。
+			const QString objPath = ResolveRepoAsset(
+				"filament/assets/models/material_sphere/material_sphere.obj");
+			if (!objPath.isEmpty() && LoadObjMesh(objPath, positions, normals, indices)) {
+				CORE_INFO("[Preview] 已加载 material_sphere.obj: {}",
+					objPath.toLocal8Bit().constData());
+			}
+			else {
+				CORE_WARN("[Preview] material_sphere.obj 不可用，回退到程序化 material ball");
+				BuildMaterialBall(positions, normals, indices);
+			}
 			break;
+		}
 		case PreviewMesh::Cube:
 			BuildCube(positions, normals, indices);
 			break;
