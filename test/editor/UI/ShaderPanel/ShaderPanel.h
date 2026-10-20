@@ -1,11 +1,11 @@
 #pragma once
-#include <QtWidgets/QDockWidget>
+#include <QWidget>
 
 namespace MOON {
 
-	// 只读 GPU 着色器查看面板：Vertex / Fragment / Compute 三个阶段。
-	// 当前预览材质 aiDefaultMat 的源码由 matc/matinfo 从其 .filamat 包中提取。
-	class ShaderPanel : public QDockWidget
+	// 只读 GPU 着色器查看面板：左侧 .mat 源码，右侧 Vertex / Fragment / Compute GLSL。
+	// 当前预览材质 aiDefaultMat 的源码由应用内嵌 .filamat 包运行时提取。
+	class ShaderPanel : public QWidget
 	{
 		Q_OBJECT
 	public:

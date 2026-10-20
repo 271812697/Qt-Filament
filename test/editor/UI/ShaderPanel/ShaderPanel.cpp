@@ -6,16 +6,17 @@
 
 #include "core/MaterialShaderLibrary.h"
 
-#include "editor/UI/DockWidgetTitleBar.h"
+#include "Widgets/InviwoCheckBox.h"
 
+#include <QAbstractButton>
 #include <QApplication>
-#include <QCheckBox>
 #include <QClipboard>
 #include <QFile>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSplitter>
 #include <QTabWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -43,19 +44,17 @@ namespace MOON {
 
 		void setUp() {
 			mSelf->setObjectName(QStringLiteral("ShaderPanel"));
-			mSelf->setAllowedAreas(Qt::AllDockWidgetAreas);
-			mSelf->setMinimumHeight(330);
-			mSelf->setMinimumWidth(700);
-			mSelf->setTitleBarWidget(new DockWidgetTitleBar(mSelf));
+			mSelf->setMinimumHeight(260);
 			mSelf->setStyleSheet(QStringLiteral(R"(
 				QWidget#ShaderInfoBar { background: #2b2b2e; border-bottom: 1px solid #1b1b1d; }
+				QWidget#SubHeader { background: #2b2b2e; border-bottom: 1px solid #1b1b1d; }
 				QLabel#ShaderInfo { color: #e0e0e0; font-weight: 600; }
 				QLabel#ShaderMeta { color: #7d8288; }
 				QLabel#ShaderStats { color: #7d8288; }
+				QLabel#SubTitle { color: #d8dbe0; font-weight: 600; }
 				QWidget#VariantSide { background: #242428; border-right: 1px solid #35353a; }
 				QLabel#PanelCaption { color: #7d8288; font-size: 10px; }
 				QLabel#VariantValue { color: #dcdcaa; font-weight: 600; }
-				QCheckBox { color: #c8ccd2; spacing: 6px; }
 				QPushButton#ShaderCopy {
 					color: #d7dae0;
 					background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -76,6 +75,8 @@ namespace MOON {
 					border-top: 1px solid #268bd2;
 				}
 				QTabBar::tab:hover { color: #ffffff; }
+				QSplitter::handle { background: #35353a; }
+				QSplitter::handle:horizontal { width: 1px; }
 			)"));
 
 			auto* content = new QWidget(mSelf);
@@ -83,7 +84,7 @@ namespace MOON {
 			layout->setContentsMargins(0, 0, 0, 0);
 			layout->setSpacing(0);
 
-			// 顶部材质/阶段信息
+			// 顶部材质/API 信息
 			auto* infoBar = new QWidget(content);
 			infoBar->setObjectName(QStringLiteral("ShaderInfoBar"));
 			auto* infoLayout = new QHBoxLayout(infoBar);
@@ -103,10 +104,10 @@ namespace MOON {
 			mStats = new QLabel(infoBar);
 			mStats->setObjectName(QStringLiteral("ShaderStats"));
 
-			mCopy = new QPushButton(QStringLiteral("Copy"), infoBar);
+			mCopy = new QPushButton(QStringLiteral("Copy GLSL"), infoBar);
 			mCopy->setObjectName(QStringLiteral("ShaderCopy"));
 			mCopy->setCursor(Qt::PointingHandCursor);
-			mCopy->setToolTip(QStringLiteral("Copy the current shader/material source"));
+			mCopy->setToolTip(QStringLiteral("Copy the active GLSL tab"));
 
 			infoLayout->addWidget(material);
 			infoLayout->addWidget(meta);
@@ -114,27 +115,40 @@ namespace MOON {
 			infoLayout->addWidget(mStats);
 			infoLayout->addWidget(mCopy);
 
-			// 左侧 feature 勾选
+			// 左侧 variant feature，勾选框与 Material 面板的 Inviwo 方框保持一致
 			auto* side = new QWidget(content);
 			side->setObjectName(QStringLiteral("VariantSide"));
 			side->setFixedWidth(200);
 			auto* sideLayout = new QVBoxLayout(side);
 			sideLayout->setContentsMargins(9, 6, 9, 6);
-			sideLayout->setSpacing(4);
+			sideLayout->setSpacing(3);
 
 			auto* featuresCaption = new QLabel(QStringLiteral("VARIANT FEATURES"), side);
 			featuresCaption->setObjectName(QStringLiteral("PanelCaption"));
 			sideLayout->addWidget(featuresCaption);
 
 			for (const ShaderFeature& feature : MaterialShaderLibrary::Features()) {
-				const QString label = QStringLiteral("%1  %2")
+				auto* row = new QWidget(side);
+				auto* rowLayout = new QHBoxLayout(row);
+				rowLayout->setContentsMargins(0, 0, 0, 0);
+				rowLayout->setSpacing(6);
+
+				const QString labelText = QStringLiteral("%1  %2")
 					.arg(QString::fromLatin1(feature.name),
 						QString::fromLatin1(feature.shortName));
-				auto* check = new QCheckBox(label, side);
+				auto* label = new QLabel(labelText, row);
+				label->setStyleSheet(QStringLiteral("color: #c8ccd2;"));
+
+				auto* check = new RectCheckBoxButton(row);
 				check->setToolTip(QString::fromLatin1(feature.description));
-				sideLayout->addWidget(check);
+				check->setAccessibleName(QString::fromLatin1(feature.name));
+
+				rowLayout->addWidget(label, 1);
+				rowLayout->addWidget(check, 0, Qt::AlignRight | Qt::AlignVCenter);
+				sideLayout->addWidget(row);
+
 				mFeatureChecks.push_back(check);
-				QObject::connect(check, &QCheckBox::toggled, mSelf, [this](bool) {
+				QObject::connect(check, &QAbstractButton::toggled, mSelf, [this](bool) {
 					if (!mSyncing) {
 						applyCheckedVariant();
 					}
@@ -151,37 +165,81 @@ namespace MOON {
 			mVariantValue->setWordWrap(true);
 			sideLayout->addWidget(mVariantValue);
 
-			sideLayout->addSpacing(6);
-
 			sideLayout->addStretch(1);
 
-			// 右侧代码视图：Vertex / Fragment / Compute / Material
-			mTabs = new QTabWidget(content);
-			mTabs->setDocumentMode(true);
+			// 代码区：左侧 .mat，右侧 GLSL 三个阶段，可拖动分隔
+			auto* codeSplitter = new QSplitter(Qt::Horizontal, content);
+			codeSplitter->setChildrenCollapsible(false);
 
+			auto* materialPane = new QWidget(codeSplitter);
+			auto* materialLayout = new QVBoxLayout(materialPane);
+			materialLayout->setContentsMargins(0, 0, 0, 0);
+			materialLayout->setSpacing(0);
+
+			auto* materialHeader = new QWidget(materialPane);
+			materialHeader->setObjectName(QStringLiteral("SubHeader"));
+			auto* materialHeaderLayout = new QHBoxLayout(materialHeader);
+			materialHeaderLayout->setContentsMargins(8, 2, 8, 2);
+			materialHeaderLayout->setSpacing(8);
+
+			auto* materialTitle = new QLabel(QStringLiteral("Material (.mat)"), materialHeader);
+			materialTitle->setObjectName(QStringLiteral("SubTitle"));
+			mMaterialStats = new QLabel(materialHeader);
+			mMaterialStats->setObjectName(QStringLiteral("ShaderStats"));
+			mMaterialCopy = new QPushButton(QStringLiteral("Copy"), materialHeader);
+			mMaterialCopy->setObjectName(QStringLiteral("ShaderCopy"));
+			mMaterialCopy->setCursor(Qt::PointingHandCursor);
+			mMaterialCopy->setToolTip(QStringLiteral("Copy the original .mat source"));
+
+			materialHeaderLayout->addWidget(materialTitle);
+			materialHeaderLayout->addStretch(1);
+			materialHeaderLayout->addWidget(mMaterialStats);
+			materialHeaderLayout->addWidget(mMaterialCopy);
+
+			mMaterial = CreateEditor(materialPane, true);
+			materialLayout->addWidget(materialHeader);
+			materialLayout->addWidget(mMaterial, 1);
+
+			auto* glslPane = new QWidget(codeSplitter);
+			auto* glslLayout = new QVBoxLayout(glslPane);
+			glslLayout->setContentsMargins(0, 0, 0, 0);
+			glslLayout->setSpacing(0);
+
+			mTabs = new QTabWidget(glslPane);
+			mTabs->setDocumentMode(true);
 			mVertex = CreateEditor(mTabs, false);
 			mFragment = CreateEditor(mTabs, false);
 			mCompute = CreateEditor(mTabs, false);
-			mMaterial = CreateEditor(mTabs, true);
-
-			mCompute->SetSource(QString::fromUtf8(ShaderSources::kDefaultMaterialComputeNote).trimmed());
-			mMaterial->SetSource(LoadShaderResource(
-				ShaderSources::kDefaultMaterialMatResource).trimmed());
-
 			mTabs->addTab(mVertex, QStringLiteral("Vertex"));
 			mTabs->addTab(mFragment, QStringLiteral("Fragment"));
 			mTabs->addTab(mCompute, QStringLiteral("Compute"));
-			mTabs->addTab(mMaterial, QStringLiteral("Material (.mat)"));
+			glslLayout->addWidget(mTabs);
+
+			codeSplitter->addWidget(materialPane);
+			codeSplitter->addWidget(glslPane);
+			codeSplitter->setStretchFactor(0, 2);
+			codeSplitter->setStretchFactor(1, 3);
+			codeSplitter->setSizes({ 430, 760 });
 
 			auto* body = new QHBoxLayout();
 			body->setContentsMargins(0, 0, 0, 0);
 			body->setSpacing(0);
 			body->addWidget(side);
-			body->addWidget(mTabs, 1);
+			body->addWidget(codeSplitter, 1);
 
 			layout->addWidget(infoBar);
 			layout->addLayout(body, 1);
-			mSelf->setWidget(content);
+
+			auto* outer = new QVBoxLayout(mSelf);
+			outer->setContentsMargins(0, 0, 0, 0);
+			outer->setSpacing(0);
+			outer->addWidget(content);
+
+			mCompute->SetSource(
+				QString::fromUtf8(ShaderSources::kDefaultMaterialComputeNote).trimmed());
+			mMaterial->SetSource(LoadShaderResource(
+				ShaderSources::kDefaultMaterialMatResource).trimmed());
+			mMaterialStats->setText(QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
 
 			QObject::connect(mTabs, &QTabWidget::currentChanged, mSelf, [this](int) {
 				updateInfo();
@@ -199,10 +257,13 @@ namespace MOON {
 					QApplication::clipboard()->setText(editor->toPlainText());
 				}
 			});
+			QObject::connect(mMaterialCopy, &QPushButton::clicked, mSelf, [this]() {
+				QApplication::clipboard()->setText(mMaterial->toPlainText());
+			});
 
 			setVariantKey(resolveDefaultVariant());
 
-			// 首次布局后确保默认停在第 1 行；文档滚动条范围此时才最终确定。
+			// 首次布局后确保默认停在第 1 行。
 			QTimer::singleShot(0, mSelf, [this]() {
 				mTabs->setCurrentIndex(0);
 				for (ShaderCodeEditor* editor : { mVertex, mFragment, mCompute, mMaterial }) {
@@ -276,7 +337,7 @@ namespace MOON {
 			return QStringLiteral(
 				"// No compiled %1 shader for variant %2.\n"
 				"// aiDefaultMat only contains a subset of feature combinations.\n"
-				"// Pick one of the COMPILED VARIANTS on the left, or change the checkboxes.\n")
+				"// Change the feature checkboxes to a combination that matc compiled.\n")
 				.arg(stage)
 				.arg(MaterialShaderLibrary::VariantName(key));
 		}
@@ -286,7 +347,6 @@ namespace MOON {
 			case 0: return mVertex;
 			case 1: return mFragment;
 			case 2: return mCompute;
-			case 3: return mMaterial;
 			default: return nullptr;
 			}
 		}
@@ -312,14 +372,12 @@ namespace MOON {
 			case 2:
 				mStats->setText(QStringLiteral("no compute stage"));
 				break;
-			case 3:
-				mStats->setText(QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
-				break;
 			default:
 				mStats->clear();
 				break;
 			}
 			mCopy->setEnabled(!editor->document()->isEmpty());
+			mMaterialStats->setText(QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
 		}
 
 	private:
@@ -331,9 +389,11 @@ namespace MOON {
 		ShaderCodeEditor* mCompute = nullptr;
 		ShaderCodeEditor* mMaterial = nullptr;
 		QLabel* mVariantValue = nullptr;
-		std::vector<QCheckBox*> mFeatureChecks;
+		std::vector<RectCheckBoxButton*> mFeatureChecks;
 		QLabel* mStats = nullptr;
+		QLabel* mMaterialStats = nullptr;
 		QPushButton* mCopy = nullptr;
+		QPushButton* mMaterialCopy = nullptr;
 		int mCurrentVariant = 0;
 		bool mSyncing = false;
 		bool mVertexAvailable = false;
@@ -341,7 +401,7 @@ namespace MOON {
 	};
 
 	ShaderPanel::ShaderPanel(QWidget* parent)
-		: QDockWidget(parent), mInternal(new ShaderPanelInternal(this)) {
+		: QWidget(parent), mInternal(new ShaderPanelInternal(this)) {
 		mInternal->setUp();
 	}
 
