@@ -1,4 +1,4 @@
-﻿<RCC>
+<RCC>
     <qresource prefix="/">
         <file>darkstyle/Ubuntu-R.ttf</file>
         <file>darkstyle/darkstyle.qss</file>
@@ -119,5 +119,9 @@
     <qresource prefix="/entityTree">
         <file>icons/pqEyeball.svg</file>
         <file>icons/pqEyeballClosed.svg</file>
+    </qresource>
+    <qresource prefix="/shaders">
+        <file alias="DefaultMaterial.vert.glsl">shaders/DefaultMaterial.vert.glsl</file>
+        <file alias="DefaultMaterial.frag.glsl">shaders/DefaultMaterial.frag.glsl</file>
     </qresource>
 </RCC>

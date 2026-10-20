@@ -12,6 +12,7 @@
 #include "UI/MaterialPanel/MaterialPanel.h"
 #include "MulViewPanel.h"
 #include "UI/LogPanel/LogPanel.h"
+#include "UI/ShaderPanel/ShaderPanel.h"
 #include "core/FilamentApp.h"
 
 #include "Command/menubar/cameraMode.h"
@@ -54,6 +55,13 @@ namespace MOON {
 
 			auto logPanelDock = new LogPanel(self);
 			self->addDockWidget(Qt::BottomDockWidgetArea, logPanelDock);
+
+			// GPU 着色器源码只读查看器，和 Log 共用一个底部停靠区。
+			mShaderPanel = new ShaderPanel(self);
+			mShaderPanel->setWindowTitle(QApplication::translate("Shaderpanel", "Shaders", nullptr));
+			self->addDockWidget(Qt::BottomDockWidgetArea, mShaderPanel);
+			self->tabifyDockWidget(logPanelDock, mShaderPanel);
+			mShaderPanel->raise();
 
 			connectSignals();
 		}
@@ -98,6 +106,12 @@ namespace MOON {
 		void buildViewMenu() {
 			auto visible = new VisibleViewCommand(menu_View);
 			visible->setUp(menu_View);
+
+			if (mShaderPanel) {
+				auto* shaderAction = mShaderPanel->toggleViewAction();
+				shaderAction->setText(QStringLiteral("&Shaders"));
+				menu_View->addAction(shaderAction);
+			}
 		}
 
 		void buildMenu() {
@@ -128,6 +142,7 @@ namespace MOON {
 		Editor* self = nullptr;
 		QSplitter* vert_splitter_ = nullptr;
 		MulViewPanel* middlePanel = nullptr;
+		ShaderPanel* mShaderPanel = nullptr;
 		QMenuBar* mMenubar;
 		QMenu* menu_Material;
 		QMenu* menu_Display;
