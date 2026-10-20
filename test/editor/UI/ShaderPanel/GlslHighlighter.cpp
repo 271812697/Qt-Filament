@@ -4,7 +4,7 @@
 
 namespace MOON {
 
-	GlslHighlighter::GlslHighlighter(QTextDocument* parent)
+	GlslHighlighter::GlslHighlighter(QTextDocument* parent, bool materialSyntax)
 		: QSyntaxHighlighter(parent) {
 		mCommentFormat.setForeground(QColor(QStringLiteral("#6a9955")));
 		mCommentFormat.setFontItalic(true);
@@ -36,6 +36,24 @@ namespace MOON {
 		AddRule(QStringLiteral(
 			R"(\b(0[xX][0-9a-fA-F]+|\d+\.\d*([eE][+-]?\d+)?|\d+([eE][+-]?\d+)?)[fFuU]?\b)"),
 			QColor(QStringLiteral("#b5cea8")));
+
+		if (materialSyntax) {
+			AddRule(QStringLiteral(
+				R"(\b(material|vertex|fragment|shadingModel|parameters|parameter|type|name|)"
+				R"(value|requires|variantFilter|blending|transparent|opaque|fade|doubleSided|)"
+				R"(culling|depthWrite|depthTest|castShadows|receiveShadows|lit|unlit|)"
+				R"(subsurface|cloth|specularGlossiness|prepareMaterial|MaterialInputs|)"
+				R"(materialParams)\b)"),
+				QColor(QStringLiteral("#c586c0")), true);
+
+			AddRule(QStringLiteral(
+				R"(\b(float2|float3|float4|int2|int3|int4|uint2|uint3|uint4|bool2|bool3|)"
+				R"(bool4|mat2|mat3|mat4|sampler2D|samplerCube|void)\b)"),
+				QColor(QStringLiteral("#4ec9b0")));
+
+			AddRule(QStringLiteral(R"("(?:[^"\\]|\\.)*")"),
+				QColor(QStringLiteral("#ce9178")));
+		}
 	}
 
 	void GlslHighlighter::AddRule(const QString& pattern, const QColor& color, bool bold) {

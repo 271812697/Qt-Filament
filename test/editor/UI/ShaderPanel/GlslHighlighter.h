@@ -13,7 +13,7 @@ namespace MOON {
 	class GlslHighlighter : public QSyntaxHighlighter
 	{
 	public:
-		explicit GlslHighlighter(QTextDocument* parent);
+		explicit GlslHighlighter(QTextDocument* parent, bool materialSyntax = false);
 
 	protected:
 		void highlightBlock(const QString& text) override;

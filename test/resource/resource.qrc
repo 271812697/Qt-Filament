@@ -121,7 +121,6 @@
         <file>icons/pqEyeballClosed.svg</file>
     </qresource>
     <qresource prefix="/shaders">
-        <file alias="DefaultMaterial.vert.glsl">shaders/DefaultMaterial.vert.glsl</file>
-        <file alias="DefaultMaterial.frag.glsl">shaders/DefaultMaterial.frag.glsl</file>
+        <file alias="DefaultMaterial.mat.txt">shaders/DefaultMaterial.mat.txt</file>
     </qresource>
 </RCC>

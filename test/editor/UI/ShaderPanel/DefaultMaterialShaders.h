@@ -1,29 +1,21 @@
 #pragma once
 
-// The preview material's GLSL sources are generated from Filament's
-// aiDefaultMat material package and stored as Qt resources:
-//   :/shaders/DefaultMaterial.vert.glsl   (DIR vertex stage)
-//   :/shaders/DefaultMaterial.frag.glsl   (DIR fragment stage)
+// The Shader panel reads the preview material's GLSL directly from the
+// aiDefaultMat package embedded in the application. The variant checkboxes
+// select the same filaflat chunks that the Filament renderer uses.
 //
-// Regeneration:
-//   matc -a opengl -p desktop -g -o aiDefaultMat.filamat aiDefaultMat.mat
-//   matinfo -g 2 aiDefaultMat.filamat > DefaultMaterial.vert.glsl
-//   matinfo -g 3 aiDefaultMat.filamat > DefaultMaterial.frag.glsl
+// The original .mat source consumed by matc is stored as a Qt resource:
+//   :/shaders/DefaultMaterial.mat.txt
 //
-// The preview scene uses one directional light + IBL, no shadows/fog/skinning,
-// so the active surface variant is 0x01 (DIR). Compute stages are not generated
-// for this surface material.
+// Source material:
+//   filament/samples/materials/aiDefaultMat.mat
 
 namespace MOON::ShaderSources {
 
 inline constexpr const char* kDefaultMaterialName = "AssimpDefaultMat (aiDefaultMat)";
 inline constexpr const char* kDefaultMaterialApi = "OpenGL 410 core / desktop";
-inline constexpr const char* kDefaultMaterialVariant = "0x01 (DIR) - directional light";
-
-inline constexpr const char* kDefaultMaterialVertexResource =
-	":/shaders/DefaultMaterial.vert.glsl";
-inline constexpr const char* kDefaultMaterialFragmentResource =
-	":/shaders/DefaultMaterial.frag.glsl";
+inline constexpr const char* kDefaultMaterialMatResource =
+	":/shaders/DefaultMaterial.mat.txt";
 
 inline constexpr const char* kDefaultMaterialComputeNote =
 	"// The preview material is a surface (lit) material.\n"

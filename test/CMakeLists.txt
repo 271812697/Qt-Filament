@@ -20,6 +20,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC
 target_link_libraries(${TARGET_NAME} PUBLIC glad)
 target_link_libraries(${TARGET_NAME} PUBLIC spdlog)
 target_link_libraries(${TARGET_NAME} PUBLIC filament)
+target_link_libraries(${TARGET_NAME} PUBLIC filaflat)
 target_link_libraries(${TARGET_NAME} PUBLIC bluegl)
 target_link_libraries(${TARGET_NAME} PUBLIC filameshio)
 target_link_libraries(${TARGET_NAME} PUBLIC filament-iblprefilter)
