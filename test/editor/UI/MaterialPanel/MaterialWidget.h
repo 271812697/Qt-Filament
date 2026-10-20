@@ -12,6 +12,12 @@ namespace MOON {
 		explicit MaterialWidget(QWidget* parent = nullptr);
 		~MaterialWidget();
 
+		// 当前 Variant Features 勾选出的 Filament variant key
+		int variantKey() const;
+
+	signals:
+		void variantKeyChanged(int key);
+
 	public slots:
 		// 引擎初始化完成 / 参数被外部复位后，把 Filament 侧的当前值同步回控件
 		void RefreshValues();

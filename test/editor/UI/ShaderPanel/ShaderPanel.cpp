@@ -6,9 +6,6 @@
 
 #include "core/MaterialShaderLibrary.h"
 
-#include "Widgets/InviwoCheckBox.h"
-
-#include <QAbstractButton>
 #include <QApplication>
 #include <QClipboard>
 #include <QFile>
@@ -44,7 +41,7 @@ namespace MOON {
 
 		void setUp() {
 			mSelf->setObjectName(QStringLiteral("ShaderPanel"));
-			mSelf->setMinimumHeight(260);
+			mSelf->setMinimumHeight(220);
 			mSelf->setStyleSheet(QStringLiteral(R"(
 				QWidget#ShaderInfoBar { background: #2b2b2e; border-bottom: 1px solid #1b1b1d; }
 				QWidget#SubHeader { background: #2b2b2e; border-bottom: 1px solid #1b1b1d; }
@@ -52,9 +49,6 @@ namespace MOON {
 				QLabel#ShaderMeta { color: #7d8288; }
 				QLabel#ShaderStats { color: #7d8288; }
 				QLabel#SubTitle { color: #d8dbe0; font-weight: 600; }
-				QWidget#VariantSide { background: #242428; border-right: 1px solid #35353a; }
-				QLabel#PanelCaption { color: #7d8288; font-size: 10px; }
-				QLabel#VariantValue { color: #dcdcaa; font-weight: 600; }
 				QPushButton#ShaderCopy {
 					color: #d7dae0;
 					background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -115,58 +109,6 @@ namespace MOON {
 			infoLayout->addWidget(mStats);
 			infoLayout->addWidget(mCopy);
 
-			// 左侧 variant feature，勾选框与 Material 面板的 Inviwo 方框保持一致
-			auto* side = new QWidget(content);
-			side->setObjectName(QStringLiteral("VariantSide"));
-			side->setFixedWidth(200);
-			auto* sideLayout = new QVBoxLayout(side);
-			sideLayout->setContentsMargins(9, 6, 9, 6);
-			sideLayout->setSpacing(3);
-
-			auto* featuresCaption = new QLabel(QStringLiteral("VARIANT FEATURES"), side);
-			featuresCaption->setObjectName(QStringLiteral("PanelCaption"));
-			sideLayout->addWidget(featuresCaption);
-
-			for (const ShaderFeature& feature : MaterialShaderLibrary::Features()) {
-				auto* row = new QWidget(side);
-				auto* rowLayout = new QHBoxLayout(row);
-				rowLayout->setContentsMargins(0, 0, 0, 0);
-				rowLayout->setSpacing(6);
-
-				const QString labelText = QStringLiteral("%1  %2")
-					.arg(QString::fromLatin1(feature.name),
-						QString::fromLatin1(feature.shortName));
-				auto* label = new QLabel(labelText, row);
-				label->setStyleSheet(QStringLiteral("color: #c8ccd2;"));
-
-				auto* check = new RectCheckBoxButton(row);
-				check->setToolTip(QString::fromLatin1(feature.description));
-				check->setAccessibleName(QString::fromLatin1(feature.name));
-
-				rowLayout->addWidget(label, 1);
-				rowLayout->addWidget(check, 0, Qt::AlignRight | Qt::AlignVCenter);
-				sideLayout->addWidget(row);
-
-				mFeatureChecks.push_back(check);
-				QObject::connect(check, &QAbstractButton::toggled, mSelf, [this](bool) {
-					if (!mSyncing) {
-						applyCheckedVariant();
-					}
-				});
-			}
-
-			sideLayout->addSpacing(4);
-			auto* variantCaption = new QLabel(QStringLiteral("VARIANT"), side);
-			variantCaption->setObjectName(QStringLiteral("PanelCaption"));
-			sideLayout->addWidget(variantCaption);
-
-			mVariantValue = new QLabel(side);
-			mVariantValue->setObjectName(QStringLiteral("VariantValue"));
-			mVariantValue->setWordWrap(true);
-			sideLayout->addWidget(mVariantValue);
-
-			sideLayout->addStretch(1);
-
 			// 代码区：左侧 .mat，右侧 GLSL 三个阶段，可拖动分隔
 			auto* codeSplitter = new QSplitter(Qt::Horizontal, content);
 			codeSplitter->setChildrenCollapsible(false);
@@ -219,16 +161,10 @@ namespace MOON {
 			codeSplitter->addWidget(glslPane);
 			codeSplitter->setStretchFactor(0, 2);
 			codeSplitter->setStretchFactor(1, 3);
-			codeSplitter->setSizes({ 430, 760 });
-
-			auto* body = new QHBoxLayout();
-			body->setContentsMargins(0, 0, 0, 0);
-			body->setSpacing(0);
-			body->addWidget(side);
-			body->addWidget(codeSplitter, 1);
+			codeSplitter->setSizes({ 300, 430 });
 
 			layout->addWidget(infoBar);
-			layout->addLayout(body, 1);
+			layout->addWidget(codeSplitter, 1);
 
 			auto* outer = new QVBoxLayout(mSelf);
 			outer->setContentsMargins(0, 0, 0, 0);
@@ -261,7 +197,7 @@ namespace MOON {
 				QApplication::clipboard()->setText(mMaterial->toPlainText());
 			});
 
-			setVariantKey(resolveDefaultVariant());
+			applyVariant(resolveDefaultVariant());
 
 			// 首次布局后确保默认停在第 1 行。
 			QTimer::singleShot(0, mSelf, [this]() {
@@ -274,6 +210,10 @@ namespace MOON {
 				}
 				updateInfo();
 			});
+		}
+
+		void SetVariantKey(int key) {
+			applyVariant(key);
 		}
 
 		ShaderCodeEditor* CreateEditor(QWidget* parent, bool materialSyntax) {
@@ -291,31 +231,8 @@ namespace MOON {
 			return variants.empty() ? preferred : variants.front();
 		}
 
-		void applyCheckedVariant() {
-			int key = 0;
-			const auto& features = MaterialShaderLibrary::Features();
-			for (size_t i = 0; i < mFeatureChecks.size() && i < features.size(); ++i) {
-				if (mFeatureChecks[i]->isChecked()) {
-					key |= features[i].bit;
-				}
-			}
-			applyVariant(key, false);
-		}
-
-		void setVariantKey(int key) {
-			applyVariant(key, true);
-		}
-
-		void applyVariant(int key, bool syncCheckboxes) {
+		void applyVariant(int key) {
 			mCurrentVariant = key & 0xFF;
-			mSyncing = true;
-			if (syncCheckboxes) {
-				const auto& features = MaterialShaderLibrary::Features();
-				for (size_t i = 0; i < mFeatureChecks.size() && i < features.size(); ++i) {
-					mFeatureChecks[i]->setChecked((mCurrentVariant & features[i].bit) != 0);
-				}
-			}
-			mSyncing = false;
 
 			const QString vertex = mLibrary.VertexSource(mCurrentVariant);
 			const QString fragment = mLibrary.FragmentSource(mCurrentVariant);
@@ -328,7 +245,6 @@ namespace MOON {
 			mFragment->SetSource(mFragmentAvailable
 				? fragment
 				: missingSourceMessage(QStringLiteral("fragment"), mCurrentVariant));
-			mVariantValue->setText(MaterialShaderLibrary::VariantName(mCurrentVariant));
 
 			updateInfo();
 		}
@@ -337,7 +253,7 @@ namespace MOON {
 			return QStringLiteral(
 				"// No compiled %1 shader for variant %2.\n"
 				"// aiDefaultMat only contains a subset of feature combinations.\n"
-				"// Change the feature checkboxes to a combination that matc compiled.\n")
+				"// Change the Variant Features in the Material panel.\n")
 				.arg(stage)
 				.arg(MaterialShaderLibrary::VariantName(key));
 		}
@@ -388,14 +304,11 @@ namespace MOON {
 		ShaderCodeEditor* mFragment = nullptr;
 		ShaderCodeEditor* mCompute = nullptr;
 		ShaderCodeEditor* mMaterial = nullptr;
-		QLabel* mVariantValue = nullptr;
-		std::vector<RectCheckBoxButton*> mFeatureChecks;
 		QLabel* mStats = nullptr;
 		QLabel* mMaterialStats = nullptr;
 		QPushButton* mCopy = nullptr;
 		QPushButton* mMaterialCopy = nullptr;
 		int mCurrentVariant = 0;
-		bool mSyncing = false;
 		bool mVertexAvailable = false;
 		bool mFragmentAvailable = false;
 	};
@@ -407,6 +320,12 @@ namespace MOON {
 
 	ShaderPanel::~ShaderPanel() {
 		delete mInternal;
+	}
+
+	void ShaderPanel::SetVariantKey(int key) {
+		if (mInternal) {
+			mInternal->SetVariantKey(key);
+		}
 	}
 
 } // namespace MOON

@@ -1,11 +1,9 @@
 #include <qpushbutton.h>
 #include <qboxlayout.h>
-#include <QVBoxLayout>
 #include <QtWidgets/QApplication>
 #include <QAction>
 #include <QMenuBar>
 #include <QKeySequence>
-#include <QSplitter>
 #include <QtWidgets/QDockWidget>
 #include "editor.h"
 #include "View/viewerwidget.h"
@@ -13,7 +11,6 @@
 #include "UI/MaterialPanel/MaterialPanel.h"
 #include "MulViewPanel.h"
 #include "UI/LogPanel/LogPanel.h"
-#include "UI/ShaderPanel/ShaderPanel.h"
 #include "core/FilamentApp.h"
 
 #include "Command/menubar/cameraMode.h"
@@ -33,36 +30,16 @@ namespace MOON {
 			self->setWindowIcon(icon);
 			self->statusBar();   // 创建状态栏，菜单项悬浮提示（statusTip）显示在这里
 
-			// 材质预览和 Shader 源码作为同一个 QDockWidget 的内容：
-			// 上半部分是 3D 预览，下半部分是只读着色器/材质源码。
-			auto* previewWorkspace = new QWidget(self);
-			auto* previewLayout = new QVBoxLayout(previewWorkspace);
-			previewLayout->setContentsMargins(0, 0, 0, 0);
-			previewLayout->setSpacing(0);
-
-			auto* previewSplitter = new QSplitter(Qt::Vertical, previewWorkspace);
-			previewSplitter->setChildrenCollapsible(false);
-
-			middlePanel = new MulViewPanel(previewSplitter);
+			// 中央区只保留材质预览；Material 停靠面板内部再放材质参数与 Shader。
+			auto centralwidget = new QWidget(self);
+			self->setCentralWidget(centralwidget);
+			auto centralwidget_layout = new QHBoxLayout(centralwidget);
+			middlePanel = new MulViewPanel(centralwidget);
 			QSizePolicy sizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 			sizePolicy.setHeightForWidth(middlePanel->sizePolicy().hasHeightForWidth());
 			middlePanel->setSizePolicy(sizePolicy);
-
-			mShaderPanel = new ShaderPanel(previewSplitter);
-			previewSplitter->addWidget(middlePanel);
-			previewSplitter->addWidget(mShaderPanel);
-			previewSplitter->setStretchFactor(0, 3);
-			previewSplitter->setStretchFactor(1, 2);
-			previewSplitter->setSizes({ 560, 300 });
-			previewLayout->addWidget(previewSplitter);
-
-			auto* previewDock = new QDockWidget(self);
-			previewDock->setObjectName(QStringLiteral("PreviewDock"));
-			previewDock->setFeatures(QDockWidget::NoDockWidgetFeatures);
-			previewDock->setTitleBarWidget(new QWidget(previewDock));
-			previewDock->setWidget(previewWorkspace);
-			previewDock->setStyleSheet(QStringLiteral("QDockWidget { border: none; }"));
-			self->setCentralWidget(previewDock);
+			centralwidget_layout->addWidget(middlePanel);
+			centralwidget_layout->setContentsMargins(0, 0, 0, 0);
 
 			// 材质预览应用不再需要场景树；左侧保留渲染设置，右侧是材质参数。
 			auto settingPanel = new SettingPanel(self);
@@ -72,9 +49,11 @@ namespace MOON {
 			auto materialPanel = new MaterialPanel(self);
 			materialPanel->setAllowedAreas(Qt::AllDockWidgetAreas);
 			materialPanel->setWindowTitle(QApplication::translate("Materialpanel", "Material", nullptr));
+			materialPanel->setMinimumWidth(680);
 
 			self->addDockWidget(Qt::LeftDockWidgetArea, settingPanel);
 			self->addDockWidget(Qt::RightDockWidgetArea, materialPanel);
+			self->resizeDocks({ materialPanel }, { 760 }, Qt::Horizontal);
 
 			auto logPanelDock = new LogPanel(self);
 			self->addDockWidget(Qt::BottomDockWidgetArea, logPanelDock);
@@ -122,16 +101,6 @@ namespace MOON {
 		void buildViewMenu() {
 			auto visible = new VisibleViewCommand(menu_View);
 			visible->setUp(menu_View);
-
-			auto* shaderAction = new QAction(QStringLiteral("&Shader Panel"), self);
-			shaderAction->setCheckable(true);
-			shaderAction->setChecked(true);
-			connect(shaderAction, &QAction::toggled, self, [this](bool visible) {
-				if (mShaderPanel) {
-					mShaderPanel->setVisible(visible);
-				}
-			});
-			menu_View->addAction(shaderAction);
 		}
 
 		void buildMenu() {
@@ -160,9 +129,7 @@ namespace MOON {
 		}
 	private:
 		Editor* self = nullptr;
-		QSplitter* vert_splitter_ = nullptr;
 		MulViewPanel* middlePanel = nullptr;
-		ShaderPanel* mShaderPanel = nullptr;
 		QMenuBar* mMenubar;
 		QMenu* menu_Material;
 		QMenu* menu_Display;

@@ -1,6 +1,7 @@
 #include "MaterialWidget.h"
 
 #include "core/FilamentApp.h"
+#include "core/MaterialShaderLibrary.h"
 #include "editor/UI/PropertyPanel/Collapsiblegroupboxwidget.h"
 #include "Widgets/BoolProperty.h"
 #include "Widgets/ColorPickerProperty.h"
@@ -14,6 +15,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -117,6 +119,61 @@ namespace MOON {
 			}
 		};
 
+		// --------------------------------------------------------------------
+		// Filament variant features：只影响 Shader 面板显示哪一份编译好的源码，
+		// 不改变预览场景实际使用的 variant。
+		// --------------------------------------------------------------------
+		class PreviewVariantComponent : public PropertyComponent {
+		public:
+			PreviewVariantComponent(int* key, std::function<void(int)> onChanged)
+				: mKey(key), mOnChanged(std::move(onChanged)) {
+				for (const ShaderFeature& feature : MaterialShaderLibrary::Features()) {
+					const QString label = QStringLiteral("%1  %2")
+						.arg(QString::fromLatin1(feature.name),
+							QString::fromLatin1(feature.shortName));
+					mItems.emplace_back(label, feature.bit);
+					addProperty(new BoolProperty(
+						label, this, BoolProperty::Style::InviwoRect));
+				}
+			}
+
+			QVariant getPropertyValue(const QString& name) override {
+				const uint8_t bit = bitFor(name);
+				return (*mKey & bit) != 0;
+			}
+
+			void setPropertyValue(const QString& name, const QVariant& value) override {
+				const uint8_t bit = bitFor(name);
+				if (value.toBool()) {
+					*mKey |= bit;
+				}
+				else {
+					*mKey &= ~static_cast<int>(bit);
+				}
+				if (mOnChanged) {
+					mOnChanged(*mKey);
+				}
+			}
+
+			QString getComponentName() override {
+				return "Variant Features";
+			}
+
+		private:
+			uint8_t bitFor(const QString& name) const {
+				for (const auto& item : mItems) {
+					if (item.first == name) {
+						return item.second;
+					}
+				}
+				return 0;
+			}
+
+			int* mKey = nullptr;
+			std::function<void(int)> mOnChanged;
+			std::vector<std::pair<QString, uint8_t>> mItems;
+		};
+
 	} // namespace
 
 	class MaterialWidget::MaterialWidgetInternal {
@@ -170,6 +227,18 @@ namespace MOON {
 			}
 			materialGroup->setCollapsed(false);
 			mGroups.emplace_back(materialGroup, materialComponent);
+
+			auto* variantGroup = new CollapsibleGroupBoxWidget("Variant Features", mSelf);
+			auto* variantComponent = new PreviewVariantComponent(
+				&mVariants, [this](int key) {
+					emit mSelf->variantKeyChanged(key);
+				});
+			layout->addWidget(variantGroup);
+			for (WidgetProperty* property : variantComponent->getProperties()) {
+				variantGroup->addProperty(property);
+			}
+			variantGroup->setCollapsed(false);
+			mGroups.emplace_back(variantGroup, variantComponent);
 
 			auto* environmentGroup = new CollapsibleGroupBoxWidget("Environment (IBL)", mSelf);
 			auto* environmentComponent = new PreviewEnvironmentComponent();
@@ -225,10 +294,15 @@ namespace MOON {
 			}
 		}
 
+		int variantKey() const {
+			return mVariants;
+		}
+
 	private:
 		friend class MaterialWidget;
 		MaterialWidget* mSelf = nullptr;
 		QLabel* mInfo = nullptr;
+		int mVariants = MaterialShaderLibrary::DefaultVariant();
 		std::vector<std::pair<CollapsibleGroupBoxWidget*, PropertyComponent*>> mGroups;
 	};
 
@@ -239,6 +313,11 @@ namespace MOON {
 
 	MaterialWidget::~MaterialWidget() {
 		delete mInternal;
+	}
+
+	int MaterialWidget::variantKey() const {
+		return mInternal ? mInternal->variantKey()
+			: MaterialShaderLibrary::DefaultVariant();
 	}
 
 	void MaterialWidget::RefreshValues() {

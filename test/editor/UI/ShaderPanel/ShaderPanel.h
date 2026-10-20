@@ -12,6 +12,10 @@ namespace MOON {
 		explicit ShaderPanel(QWidget* parent);
 		~ShaderPanel();
 
+	public slots:
+		// 由 Material 面板的 Variant Features 组驱动
+		void SetVariantKey(int key);
+
 	private:
 		class ShaderPanelInternal;
 		ShaderPanelInternal* mInternal = nullptr;
