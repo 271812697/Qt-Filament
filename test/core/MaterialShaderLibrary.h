@@ -29,8 +29,10 @@ namespace MOON {
 
 		QString VertexSource(int variantKey) const;
 		QString FragmentSource(int variantKey) const;
+		QString ComputeSource(int variantKey) const;
 		bool HasVertex(int variantKey) const;
 		bool HasFragment(int variantKey) const;
+		bool HasCompute(int variantKey) const;
 
 		std::vector<int> AvailableVariants() const;
 

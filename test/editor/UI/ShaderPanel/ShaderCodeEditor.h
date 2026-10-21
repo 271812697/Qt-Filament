@@ -17,6 +17,7 @@ namespace MOON {
 		explicit ShaderCodeEditor(QWidget* parent = nullptr);
 
 		void SetSource(const QString& source);
+		void SetEditable(bool editable);
 		int LineNumberAreaWidth() const;
 		void PaintLineNumbers(QPaintEvent* event);
 

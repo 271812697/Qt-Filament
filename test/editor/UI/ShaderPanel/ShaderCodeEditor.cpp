@@ -84,6 +84,11 @@ namespace MOON {
 		mResetScrollOnShow = true;
 	}
 
+	void ShaderCodeEditor::SetEditable(bool editable) {
+		setReadOnly(!editable);
+		setUndoRedoEnabled(editable);
+	}
+
 	int ShaderCodeEditor::LineNumberAreaWidth() const {
 		const int digits = std::max(2, QString::number(std::max(1, blockCount())).size());
 		return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;

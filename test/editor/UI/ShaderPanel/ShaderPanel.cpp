@@ -9,13 +9,20 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCoreApplication>
+#include <QDebug>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QProcess>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSplitter>
 #include <QTabWidget>
+#include <QTemporaryDir>
+#include <QTextDocument>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -130,6 +137,11 @@ namespace MOON {
 			materialTitle->setObjectName(QStringLiteral("SubTitle"));
 			mMaterialStats = new QLabel(materialHeader);
 			mMaterialStats->setObjectName(QStringLiteral("ShaderStats"));
+			mCompileButton = new QPushButton(QStringLiteral("Compile"), materialHeader);
+			mCompileButton->setObjectName(QStringLiteral("ShaderCopy"));
+			mCompileButton->setCursor(Qt::PointingHandCursor);
+			mCompileButton->setToolTip(
+				QStringLiteral("Run matc on the edited .mat and refresh GLSL"));
 			mMaterialCopy = new QPushButton(QStringLiteral("Copy"), materialHeader);
 			mMaterialCopy->setObjectName(QStringLiteral("ShaderCopy"));
 			mMaterialCopy->setCursor(Qt::PointingHandCursor);
@@ -138,10 +150,17 @@ namespace MOON {
 			materialHeaderLayout->addWidget(materialTitle);
 			materialHeaderLayout->addStretch(1);
 			materialHeaderLayout->addWidget(mMaterialStats);
+			materialHeaderLayout->addWidget(mCompileButton);
 			materialHeaderLayout->addWidget(mMaterialCopy);
 
+			mCompileStatus = new QLabel(QStringLiteral("Ready"), materialPane);
+			mCompileStatus->setObjectName(QStringLiteral("ShaderStats"));
+			mCompileStatus->setContentsMargins(8, 0, 8, 2);
+
 			mMaterial = CreateEditor(materialPane, true);
+			mMaterial->SetEditable(true);
 			materialLayout->addWidget(materialHeader);
+			materialLayout->addWidget(mCompileStatus);
 			materialLayout->addWidget(mMaterial, 1);
 
 			auto* glslPane = new QWidget(codeSplitter);
@@ -206,6 +225,34 @@ namespace MOON {
 				QApplication::clipboard()->setText(mMaterial->toPlainText());
 			});
 
+			mMatcProcess = new QProcess(mSelf);
+			QObject::connect(mMatcProcess,
+				QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+				mSelf, [this](int exitCode, QProcess::ExitStatus status) {
+					onCompileFinished(exitCode, status);
+				});
+			QObject::connect(mMatcProcess, &QProcess::errorOccurred,
+				mSelf, [this](QProcess::ProcessError) {
+					if (mMatcProcess->error() == QProcess::FailedToStart) {
+						mCompileStatus->setText(QStringLiteral("matc could not be started"));
+						mCompileButton->setEnabled(true);
+						mMaterial->SetEditable(true);
+						delete mTempDir;
+						mTempDir = nullptr;
+					}
+				});
+			QObject::connect(mCompileButton, &QPushButton::clicked,
+				mSelf, [this]() { compileMaterial(); });
+			QObject::connect(mMaterial->document(), &QTextDocument::modificationChanged,
+				mSelf, [this](bool modified) {
+					if (modified && mCompileButton->isEnabled()) {
+						mCompileStatus->setText(
+							QStringLiteral("Modified - press Compile to run matc"));
+					}
+				});
+
+			mCompileStatus->setText(QStringLiteral("Ready - edit .mat and press Compile"));
+
 			applyVariant(resolveDefaultVariant());
 
 			// 首次布局后确保默认停在第 1 行。
@@ -225,6 +272,120 @@ namespace MOON {
 			applyVariant(key);
 		}
 
+		QString findMatcExecutable() const {
+			const QString appDir = QCoreApplication::applicationDirPath();
+			QStringList candidates;
+			candidates << appDir + QStringLiteral("/matc.exe");
+			candidates << appDir + QStringLiteral("/matc");
+#ifdef TEST_MATC_PATH
+			candidates << QString::fromUtf8(TEST_MATC_PATH);
+#endif
+			for (const QString& candidate : candidates) {
+				if (QFileInfo::exists(candidate)) {
+					return candidate;
+				}
+			}
+			return {};
+		}
+
+		void compileMaterial() {
+			if (!mMatcProcess || mMatcProcess->state() != QProcess::NotRunning) {
+				return;
+			}
+			const QString matc = findMatcExecutable();
+			if (matc.isEmpty()) {
+				mCompileStatus->setText(
+					QStringLiteral("matc not found next to the executable"));
+				return;
+			}
+
+			delete mTempDir;
+			mTempDir = new QTemporaryDir(
+				QDir::tempPath() + QStringLiteral("/filament-matc-XXXXXX"));
+			if (!mTempDir->isValid()) {
+				mCompileStatus->setText(QStringLiteral("Could not create temp directory"));
+				return;
+			}
+
+			const QString input = mTempDir->filePath(QStringLiteral("material.mat"));
+			const QString output = mTempDir->filePath(QStringLiteral("material.filamat"));
+			QFile inputFile(input);
+			if (!inputFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+				mCompileStatus->setText(QStringLiteral("Could not write temp .mat"));
+				return;
+			}
+			inputFile.write(mMaterial->toPlainText().toUtf8());
+			inputFile.close();
+
+			mCompileButton->setEnabled(false);
+			mCompileStatus->setText(QStringLiteral("Compiling with matc..."));
+			mMaterial->SetEditable(false);
+
+			mMatcProcess->setProgram(matc);
+			mMatcProcess->setWorkingDirectory(mTempDir->path());
+			mMatcProcess->setArguments({
+				QStringLiteral("-a"), QStringLiteral("opengl"),
+				QStringLiteral("-p"), QStringLiteral("desktop"),
+				QStringLiteral("-o"), output, input });
+			mMatcProcess->start();
+		}
+
+		void onCompileFinished(int exitCode, QProcess::ExitStatus status) {
+			mCompileButton->setEnabled(true);
+			mMaterial->SetEditable(true);
+
+			const QString stderrText =
+				QString::fromLocal8Bit(mMatcProcess->readAllStandardError());
+			const QString stdoutText =
+				QString::fromLocal8Bit(mMatcProcess->readAllStandardOutput());
+
+			bool success = status == QProcess::NormalExit && exitCode == 0;
+			QByteArray package;
+			if (success && mTempDir) {
+				QFile output(mTempDir->filePath(QStringLiteral("material.filamat")));
+				if (output.open(QIODevice::ReadOnly)) {
+					package = output.readAll();
+				}
+				success = !package.isEmpty();
+			}
+
+			if (success) {
+				auto library = std::make_unique<MaterialShaderLibrary>(
+					reinterpret_cast<const uint8_t*>(package.constData()),
+					static_cast<size_t>(package.size()));
+				if (!library->IsValid()) {
+					success = false;
+					mCompileStatus->setText(
+						QStringLiteral("matc produced an unreadable material package"));
+				}
+				else {
+					mCompiledPackage = std::move(package);
+					mLibrary = std::move(library);
+					applyVariant(mCurrentVariant);
+					mMaterialStats->setText(
+						QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
+					mMaterial->document()->setModified(false);
+					mCompileStatus->setText(
+						QStringLiteral("Compiled - source generated by matc"));
+				}
+			}
+
+			if (!success && mCompileStatus->text().isEmpty()) {
+				mCompileStatus->setText(QStringLiteral("matc failed"));
+			}
+			if (!success) {
+				mCompileStatus->setText(QStringLiteral("matc failed - see log"));
+				const QString details = (stderrText + stdoutText).trimmed();
+				if (!details.isEmpty()) {
+					qWarning().noquote()
+						<< "matc failed:\n" << details.right(2000);
+				}
+			}
+
+			delete mTempDir;
+			mTempDir = nullptr;
+		}
+
 		void SetMaterialIndex(int index) {
 			const auto& assets = MaterialAssets();
 			if (index < 0 || index >= static_cast<int>(assets.size())) {
@@ -236,10 +397,15 @@ namespace MOON {
 
 			mMaterialIndex = index;
 			const MaterialAsset& asset = assets[index];
+			mCompiledPackage.clear();
 			mLibrary = std::make_unique<MaterialShaderLibrary>(asset.data, asset.size);
 			mMaterialLabel->setText(QString::fromLatin1(asset.displayName));
 			mMaterial->SetSource(LoadShaderResource(asset.matResource).trimmed());
 			mMaterialStats->setText(QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
+			if (mCompileStatus) {
+				mCompileStatus->setText(
+					QStringLiteral("Loaded - edit .mat and press Compile"));
+			}
 
 			applyVariant(mCurrentVariant);
 		}
@@ -267,12 +433,15 @@ namespace MOON {
 
 			QString vertex;
 			QString fragment;
+			QString compute;
 			if (mLibrary) {
 				vertex = mLibrary->VertexSource(mCurrentVariant);
 				fragment = mLibrary->FragmentSource(mCurrentVariant);
+				compute = mLibrary->ComputeSource(mCurrentVariant);
 			}
 			mVertexAvailable = !vertex.isEmpty();
 			mFragmentAvailable = !fragment.isEmpty();
+			mComputeAvailable = !compute.isEmpty();
 
 			mVertex->SetSource(mVertexAvailable
 				? vertex
@@ -280,6 +449,9 @@ namespace MOON {
 			mFragment->SetSource(mFragmentAvailable
 				? fragment
 				: missingSourceMessage(QStringLiteral("fragment"), mCurrentVariant));
+			mCompute->SetSource(mComputeAvailable
+				? compute
+				: QString::fromUtf8(ShaderSources::kDefaultMaterialComputeNote).trimmed());
 
 			updateInfo();
 		}
@@ -321,7 +493,9 @@ namespace MOON {
 					: QStringLiteral("not compiled"));
 				break;
 			case 2:
-				mStats->setText(QStringLiteral("no compute stage"));
+				mStats->setText(mComputeAvailable
+					? QStringLiteral("%1 lines").arg(mCompute->blockCount())
+					: QStringLiteral("no compute stage"));
 				break;
 			default:
 				mStats->clear();
@@ -329,6 +503,10 @@ namespace MOON {
 			}
 			mCopy->setEnabled(!editor->document()->isEmpty());
 			mMaterialStats->setText(QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
+		}
+
+		~ShaderPanelInternal() {
+			delete mTempDir;
 		}
 
 	private:
@@ -342,12 +520,18 @@ namespace MOON {
 		QLabel* mMaterialLabel = nullptr;
 		QLabel* mStats = nullptr;
 		QLabel* mMaterialStats = nullptr;
+		QLabel* mCompileStatus = nullptr;
 		QPushButton* mCopy = nullptr;
 		QPushButton* mMaterialCopy = nullptr;
+		QPushButton* mCompileButton = nullptr;
+		QProcess* mMatcProcess = nullptr;
+		QTemporaryDir* mTempDir = nullptr;
+		QByteArray mCompiledPackage;
 		int mMaterialIndex = 0;
 		int mCurrentVariant = 0;
 		bool mVertexAvailable = false;
 		bool mFragmentAvailable = false;
+		bool mComputeAvailable = false;
 	};
 
 	ShaderPanel::ShaderPanel(QWidget* parent)

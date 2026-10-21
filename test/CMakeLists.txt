@@ -114,6 +114,16 @@ add_dependencies(${TARGET_NAME} material_preview_package)
 target_sources(${TARGET_NAME} PRIVATE ${MATERIAL_PACKAGE_SOURCES})
 target_include_directories(${TARGET_NAME} PRIVATE "${MATERIAL_GEN_DIR}")
 
+# 运行时 .mat 编辑需要用同一版本的 matc；把它放到 exe 旁边。
+if(DEFINED MATC_RELEASE)
+    target_compile_definitions(${TARGET_NAME} PRIVATE
+        TEST_MATC_PATH="${MATC_RELEASE}")
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${MATC_RELEASE}" "$<TARGET_FILE_DIR:${TARGET_NAME}>/matc.exe"
+        COMMENT "Copying matc for runtime .mat compilation")
+endif()
+
 set(QtPluginsDir "${QT_DIR}/../../../plugins")
 file(GLOB QtPluginIconEnginesDLLs  "${QtPluginsDir}/iconengines/qsvgicon*.dll")
 file(GLOB QtPluginImageFormatsDLLs "${QtPluginsDir}/imageformats/qsvg*.dll")

@@ -29,6 +29,7 @@ namespace MOON {
 		filaflat::BlobDictionary dictionary;
 		std::map<int, QString> vertex;
 		std::map<int, QString> fragment;
+		std::map<int, QString> compute;
 		bool valid = false;
 
 		Impl(const uint8_t* packageData, size_t packageSize) {
@@ -53,13 +54,17 @@ namespace MOON {
 				if (model != ShaderModel::DESKTOP) {
 					return;
 				}
-				if (stage != ShaderStage::VERTEX && stage != ShaderStage::FRAGMENT) {
+
+				Variant filtered = variant;
+				if (stage == ShaderStage::VERTEX) {
+					filtered = Variant::filterVariantVertex(variant);
+				}
+				else if (stage == ShaderStage::FRAGMENT) {
+					filtered = Variant::filterVariantFragment(variant);
+				}
+				else if (stage != ShaderStage::COMPUTE) {
 					return;
 				}
-
-				const Variant filtered = stage == ShaderStage::VERTEX
-					? Variant::filterVariantVertex(variant)
-					: Variant::filterVariantFragment(variant);
 
 				filaflat::ShaderContent content;
 				if (!material->getShader(content, dictionary, model, filtered, stage)) {
@@ -74,14 +79,18 @@ namespace MOON {
 				if (stage == ShaderStage::VERTEX) {
 					vertex[filtered.key] = std::move(source);
 				}
-				else {
+				else if (stage == ShaderStage::FRAGMENT) {
 					fragment[filtered.key] = std::move(source);
+				}
+				else {
+					compute[filtered.key] = std::move(source);
 				}
 			});
 
 			valid = !vertex.empty() && !fragment.empty();
 			qInfo() << "MaterialShaderLibrary: variants" << vertex.size()
-				<< "vertex" << fragment.size() << "fragment";
+				<< "vertex" << fragment.size() << "fragment"
+				<< compute.size() << "compute";
 		}
 
 		QString sourceFor(const std::map<int, QString>& sources, int key, bool vertexStage) const {
@@ -112,12 +121,24 @@ namespace MOON {
 		return mImpl ? mImpl->sourceFor(mImpl->fragment, variantKey, false) : QString();
 	}
 
+	QString MaterialShaderLibrary::ComputeSource(int variantKey) const {
+		if (!mImpl) {
+			return {};
+		}
+		const auto it = mImpl->compute.find(variantKey & 0xFF);
+		return it == mImpl->compute.end() ? QString() : it->second;
+	}
+
 	bool MaterialShaderLibrary::HasVertex(int variantKey) const {
 		return !VertexSource(variantKey).isEmpty();
 	}
 
 	bool MaterialShaderLibrary::HasFragment(int variantKey) const {
 		return !FragmentSource(variantKey).isEmpty();
+	}
+
+	bool MaterialShaderLibrary::HasCompute(int variantKey) const {
+		return !ComputeSource(variantKey).isEmpty();
 	}
 
 	std::vector<int> MaterialShaderLibrary::AvailableVariants() const {
