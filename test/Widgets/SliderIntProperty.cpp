@@ -1,4 +1,4 @@
-﻿#include "Widgets/SliderIntProperty.h"
+#include "Widgets/SliderIntProperty.h"
 #include "Widgets/PropertyComponent.h"
 namespace MOON {
 	SliderIntProperty::SliderIntProperty(const QString& n, PropertyComponent* comp) :WidgetProperty(n, comp) {
@@ -12,10 +12,10 @@ namespace MOON {
 			auto widget = new IntSliderWidgetQt(parent);
 			mWidget = widget;
 			widget->setProp(this);
-			widget->setValue(owner->getPropertyValue(mName).toInt());
 			widget->setMinValue(-10);
 			widget->setMaxValue(10);
 			widget->setIncrement(1);
+			widget->setValue(owner->getPropertyValue(mName).toInt());
 		}
 		return mWidget;
 	}

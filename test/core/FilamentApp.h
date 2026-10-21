@@ -1,5 +1,8 @@
-#pragma once
+﻿#pragma once
 
+#include "PreviewMesh.h"
+
+#include <QColor>
 #include <QObject>
 #include <QString>
 #include <math/mat4.h>
@@ -29,6 +32,8 @@ namespace filament {
 
 namespace MOON {
 
+	class MaterialPreview;
+
 	// 全局 Filament 应用：负责引擎创建 / 场景初始化 / 网格加载与卸载。
 	// ViewerWidget 只做薄封装：
 	//   FilamentApp::instance().initialize(hostWidget, platform);
@@ -55,6 +60,8 @@ namespace MOON {
 		void pickedWorldPosition(int entityIndex, float worldX, float worldY, float worldZ);
 		// 当前在 TreeView 中选中的实体（-1 表示无）
 		void selectedEntityChanged(int entityIndex);
+		// 材质参数恢复默认后通知界面刷新控件
+		void previewMaterialReset();
 
 	public:
 		// 创建 Engine / Renderer / Scene / View / SwapChain / Camera / Light / Material，
@@ -148,11 +155,57 @@ namespace MOON {
 		void setEntityCulling(size_t index, bool value);
 		void setEntityPriority(size_t index, uint8_t value);
 
+		// ---- 材质预览（当前场景内容是一个材质球） ----
+		MaterialPreview* materialPreview() const { return mPreview; }
+		QString previewMaterialName() const;
+
+		// 预览网格：Sphere / Ball / Cube / Plane
+		PreviewMesh previewMesh() const;
+		void setPreviewMesh(PreviewMesh mesh);
+
+		QColor previewBaseColor() const;
+		void setPreviewBaseColor(const QColor& color);
+		float previewMetallic() const;
+		void setPreviewMetallic(float value);
+		float previewRoughness() const;
+		void setPreviewRoughness(float value);
+		float previewReflectance() const;
+		void setPreviewReflectance(float value);
+		float previewClearCoat() const;
+		void setPreviewClearCoat(float value);
+		float previewClearCoatRoughness() const;
+		void setPreviewClearCoatRoughness(float value);
+		float previewTransmission() const;
+		void setPreviewTransmission(float value);
+		float previewIor() const;
+		void setPreviewIor(float value);
+		float previewThickness() const;
+		void setPreviewThickness(float value);
+		QString previewAlbedoMap() const; void setPreviewAlbedoMap(const QString&);
+		QString previewMetallicMap() const; void setPreviewMetallicMap(const QString&);
+		QString previewRoughnessMap() const; void setPreviewRoughnessMap(const QString&);
+		QString previewAoMap() const; void setPreviewAoMap(const QString&);
+		QString previewNormalMap() const; void setPreviewNormalMap(const QString&);
+		QString previewEmissiveMap() const; void setPreviewEmissiveMap(const QString&);
+		void resetPreviewMaterial();
+
+		float previewIblIntensity() const;
+		void setPreviewIblIntensity(float value);
+		float previewIblRotation() const;
+		void setPreviewIblRotation(float degrees);
+		bool previewEnvironmentVisible() const;
+		void setPreviewEnvironmentVisible(bool visible);
+
+		// 回到默认的 3/4 视角（双击视口 / 面板按钮）
+		void resetPreviewCamera();
+
 	private:
 		explicit FilamentApp(QObject* parent = nullptr);
 		~FilamentApp() = default;
 		FilamentApp(FilamentApp const&) = delete;
 		FilamentApp& operator=(FilamentApp const&) = delete;
+
+		void createPreviewCamera();
 
 		filament::Engine* mEngine = nullptr;
 		filament::Renderer* mRenderer = nullptr;
@@ -162,6 +215,8 @@ namespace MOON {
 		filament::Camera* mCamera = nullptr;
 		filament::ColorGrading* mColorGrading = nullptr;
 		filament::Material* mMaterial = nullptr;
+		MaterialPreview* mPreview = nullptr;
+		PreviewMesh mPreviewMesh = PreviewMesh::Sphere;
 		utils::Entity mLight;
 		filament::camutils::Manipulator<float>* mCameraManipulator = nullptr;
 		QString mPendingFilePath; // 引擎就绪前选中的文件

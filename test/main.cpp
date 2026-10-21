@@ -1,4 +1,4 @@
-﻿#include "resource/DarkStyle.h"
+#include "resource/DarkStyle.h"
 #include "core/log.h"
 #include <QApplication>
 #include <QFontDatabase>
@@ -18,7 +18,7 @@ int main(int argc, char* argv[])
 	
 	QApplication::setFont(font);
 	MOON::Editor editor;
-	editor.setWindowTitle("MOON");
+	editor.setWindowTitle("Qt-Filament Material Preview");
 	editor.resize(1920, 1080);
 	editor.show();
 	int res = QApplication::exec();

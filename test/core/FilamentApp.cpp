@@ -1,9 +1,11 @@
 ﻿#include "FilamentApp.h"
+#include "MaterialPreview.h"
 #include "log.h"
 
 #include <QOpenGLContext>
 #include <QOpenGLWidget>
 #include <QMetaObject>
+#include <QColor>
 
 #include <filament/Camera.h>
 #include <filament/Box.h>
@@ -594,59 +596,64 @@ bool FilamentApp::initialize(QOpenGLWidget* hostWidget, filament::backend::Platf
     mScene = mEngine->createScene();
     mView = mEngine->createView();
     mSwapChain = mEngine->createSwapChain(hostWidget, 0);
-    mView->setName("Main View");
+    mView->setName("Material Preview");
     mView->setPostProcessingEnabled(true);
+    mView->setShadowingEnabled(false);
+    mView->setScreenSpaceRefractionEnabled(false);
 
-    // 纯色天空盒（IBL 环境贴图暂未接入）
-    auto skybox = filament::Skybox::Builder()
-        .color({ 0.1f, 0.125f, 0.25f, 1.0f })
+    // 材质预览使用 ACES 色调映射：studio HDR 的高光很亮，
+    // 不做压缩时球面会一片死白，金属反射也会只剩几个光斑。
+    mColorGrading = filament::ColorGrading::Builder()
+        .toneMapping(filament::ColorGrading::ToneMapping::ACES)
         .build(*mEngine);
-    mScene->setSkybox(skybox);
-    CORE_WARN("[IBL] 未找到环境贴图，使用纯色天空盒");
+    if (mColorGrading) {
+        mView->setColorGrading(mColorGrading);
+    }
 
-    mCameraManipulator = filament::camutils::Manipulator<float>::Builder()
-        .targetPosition(0, 0, 0)
-        .orbitSpeed(0.01f, -0.01f)   // 垂直方向与鼠标一致（默认相反）
-        .zoomSpeed(0.1f)
-        .flightMoveDamping(15.0)
-        .build(filament::camutils::Mode::ORBIT);
-    mCameraManipulator->setViewport(hostWidget->width(), hostWidget->height());
+    // 预览球轮廓要求干净：MSAA 由 Filament 在自己的离屏目标上完成，
+    // Qt 的默认 FBO 仍然保持单采样（blit 方案的要求）。
+    {
+        auto msaa = mView->getMultiSampleAntiAliasingOptions();
+        msaa.enabled = true;
+        msaa.sampleCount = 4;
+        mView->setMultiSampleAntiAliasingOptions(msaa);
+    }
 
-    mMaterial = filament::Material::Builder()
-        .package(RESOURCES_AIDEFAULTMAT_DATA, RESOURCES_AIDEFAULTMAT_SIZE)
-        .build(*mEngine);
-    if (!mMaterial) return false;
-
-    // 平行太阳光
+    // 主相机（先创建，材质预览初始化需要当前 viewport 尺寸）
     auto& em = utils::EntityManager::get();
-    mLight = em.create();
-    filament::LightManager::Builder(filament::LightManager::Type::SUN)
-        .color(filament::Color::toLinear<filament::ACCURATE>(
-            filament::sRGBColor(0.98f, 0.92f, 0.89f)))
-        .intensity(110000)
-        .direction({ 0.7f, -1.0f, -0.8f })
-        .sunAngularRadius(1.9f)
-        .castShadows(false)
-        .build(*mEngine, mLight);
-    mScene->addEntity(mLight);
-
-    // 主相机
     utils::Entity cameraEntity = em.create();
     mCamera = mEngine->createCamera(cameraEntity);
     mView->setCamera(mCamera);
-
     mView->setScene(mScene);
-    mView->setViewport({
-        0, 0,
-        (uint32_t)hostWidget->width(),
-        (uint32_t)hostWidget->height()
-    });
 
-    // 若引擎创建前已通过菜单选择了文件，初始化完成后自动加载
-    if (!mPendingFilePath.isEmpty()) {
-        loadScene(mPendingFilePath);
+    // Filament 的 viewport 使用设备像素；Qt 的 widget 尺寸是逻辑像素。
+    const float dpr = hostWidget->devicePixelRatioF();
+    const uint32_t renderWidth =
+        (uint32_t)std::max(1, (int)std::lround(hostWidget->width() * dpr));
+    const uint32_t renderHeight =
+        (uint32_t)std::max(1, (int)std::lround(hostWidget->height() * dpr));
+    mView->setViewport({ 0, 0, renderWidth, renderHeight });
+
+    // 场景内容：预览网格 + 默认 PBR 材质 + studio IBL + 方向光
+    mPreview = new MaterialPreview();
+    // 引擎就绪前用户可能已经选了 Ball/Cube/Plane；先记住，initialize 时直接建对应网格。
+    mPreview->setMeshType(mPreviewMesh);
+    if (!mPreview->initialize(mEngine, mScene)) {
+        CORE_ERROR("[Preview] 材质预览场景初始化失败");
+        return false;
     }
-    const bool ready = isReady();
+
+    createPreviewCamera();
+    updateCameraProjection();
+
+    // 立即把默认视角同步到相机，避免第一帧仍停在 Filament 的默认位置
+    if (mCameraManipulator) {
+        filament::math::float3 eye, center, up;
+        mCameraManipulator->getLookAt(&eye, &center, &up);
+        mCamera->lookAt(eye, center, up);
+    }
+
+    const bool ready = isReady() && mPreview->isReady();
     if (ready) {
         emit engineInitialized();
     }
@@ -654,43 +661,226 @@ bool FilamentApp::initialize(QOpenGLWidget* hostWidget, filament::backend::Platf
 }
 
 // ----------------------------------------------------------------------------
+// 材质预览
+// ----------------------------------------------------------------------------
+void FilamentApp::createPreviewCamera() {
+    if (!mView || !mCamera) {
+        return;
+    }
+
+    delete mCameraManipulator;
+    // 3/4 视角：相机在 +X/+Z 一侧略高于球心，目标为原点（材质球中心）。
+    mCameraManipulator = filament::camutils::Manipulator<float>::Builder()
+        .targetPosition(0.0f, 0.0f, 0.0f)
+        .orbitHomePosition(1.50f, 0.82f, 3.65f)
+        .upVector(0.0f, 1.0f, 0.0f)
+        .orbitSpeed(0.01f, -0.01f)   // 垂直方向与鼠标一致（默认相反）
+        .zoomSpeed(0.1f)
+        .flightMoveDamping(15.0)
+        .build(filament::camutils::Mode::ORBIT);
+
+    if (mCameraManipulator) {
+        const filament::Viewport viewport = mView->getViewport();
+        mCameraManipulator->setViewport((int)viewport.width, (int)viewport.height);
+    }
+    mOrthoZoomScale = 1.0f;
+}
+
+QString FilamentApp::previewMaterialName() const {
+    return mPreview ? mPreview->materialName() : QStringLiteral("Default PBR");
+}
+
+PreviewMesh FilamentApp::previewMesh() const {
+    return mPreview ? mPreview->meshType() : mPreviewMesh;
+}
+
+void FilamentApp::setPreviewMesh(PreviewMesh mesh) {
+    mPreviewMesh = mesh;
+    if (mPreview) {
+        mPreview->setMeshType(mesh);
+    }
+}
+
+QColor FilamentApp::previewBaseColor() const {
+    return mPreview ? mPreview->baseColor() : QColor(184, 184, 184);
+}
+
+void FilamentApp::setPreviewBaseColor(const QColor& color) {
+    if (mPreview) {
+        mPreview->setBaseColor(color);
+    }
+}
+
+float FilamentApp::previewMetallic() const {
+    return mPreview ? mPreview->metallic() : 0.0f;
+}
+
+void FilamentApp::setPreviewMetallic(float value) {
+    if (mPreview) {
+        mPreview->setMetallic(value);
+    }
+}
+
+float FilamentApp::previewRoughness() const {
+    return mPreview ? mPreview->roughness() : 0.40f;
+}
+
+void FilamentApp::setPreviewRoughness(float value) {
+    if (mPreview) {
+        mPreview->setRoughness(value);
+    }
+}
+
+float FilamentApp::previewReflectance() const {
+    return mPreview ? mPreview->reflectance() : 0.5f;
+}
+
+void FilamentApp::setPreviewReflectance(float value) {
+    if (mPreview) {
+        mPreview->setReflectance(value);
+    }
+}
+
+float FilamentApp::previewClearCoat() const {
+    return mPreview ? mPreview->clearCoat() : 0.0f;
+}
+
+void FilamentApp::setPreviewClearCoat(float value) {
+    if (mPreview) {
+        mPreview->setClearCoat(value);
+    }
+}
+
+float FilamentApp::previewClearCoatRoughness() const {
+    return mPreview ? mPreview->clearCoatRoughness() : 0.0f;
+}
+
+void FilamentApp::setPreviewClearCoatRoughness(float value) {
+    if (mPreview) {
+        mPreview->setClearCoatRoughness(value);
+    }
+}
+
+float FilamentApp::previewTransmission() const {
+    return mPreview ? mPreview->transmission() : 0.0f;
+}
+
+void FilamentApp::setPreviewTransmission(float value) {
+    if (mPreview) {
+        mPreview->setTransmission(value);
+    }
+}
+
+float FilamentApp::previewIor() const {
+    return mPreview ? mPreview->ior() : 1.5f;
+}
+
+void FilamentApp::setPreviewIor(float value) {
+    if (mPreview) {
+        mPreview->setIor(value);
+    }
+}
+
+QString FilamentApp::previewAlbedoMap() const { return mPreview ? mPreview->albedoMap() : QString(); }
+void FilamentApp::setPreviewAlbedoMap(const QString& p) { if (mPreview) mPreview->setAlbedoMap(p); }
+
+QString FilamentApp::previewMetallicMap() const { return mPreview ? mPreview->metallicMap() : QString(); }
+void FilamentApp::setPreviewMetallicMap(const QString& p) { if (mPreview) mPreview->setMetallicMap(p); }
+
+QString FilamentApp::previewRoughnessMap() const { return mPreview ? mPreview->roughnessMap() : QString(); }
+void FilamentApp::setPreviewRoughnessMap(const QString& p) { if (mPreview) mPreview->setRoughnessMap(p); }
+
+QString FilamentApp::previewAoMap() const { return mPreview ? mPreview->aoMap() : QString(); }
+void FilamentApp::setPreviewAoMap(const QString& p) { if (mPreview) mPreview->setAoMap(p); }
+
+QString FilamentApp::previewNormalMap() const { return mPreview ? mPreview->normalMap() : QString(); }
+void FilamentApp::setPreviewNormalMap(const QString& p) { if (mPreview) mPreview->setNormalMap(p); }
+
+QString FilamentApp::previewEmissiveMap() const { return mPreview ? mPreview->emissiveMap() : QString(); }
+void FilamentApp::setPreviewEmissiveMap(const QString& p) { if (mPreview) mPreview->setEmissiveMap(p); }
+
+float FilamentApp::previewThickness() const {
+    return mPreview ? mPreview->thickness() : 1.0f;
+}
+
+void FilamentApp::setPreviewThickness(float value) {
+    if (mPreview) {
+        mPreview->setThickness(value);
+    }
+}
+
+void FilamentApp::resetPreviewMaterial() {
+    if (mPreview) {
+        mPreview->resetMaterial();
+        emit previewMaterialReset();
+    }
+}
+
+float FilamentApp::previewIblIntensity() const {
+    return mPreview ? mPreview->iblIntensity() : 20000.0f;
+}
+
+void FilamentApp::setPreviewIblIntensity(float value) {
+    if (mPreview) {
+        mPreview->setIblIntensity(value);
+    }
+}
+
+float FilamentApp::previewIblRotation() const {
+    return mPreview ? mPreview->iblRotationDegrees() : 0.0f;
+}
+
+void FilamentApp::setPreviewIblRotation(float degrees) {
+    if (mPreview) {
+        mPreview->setIblRotationDegrees(degrees);
+    }
+}
+
+bool FilamentApp::previewEnvironmentVisible() const {
+    return mPreview ? mPreview->environmentVisible() : false;
+}
+
+void FilamentApp::setPreviewEnvironmentVisible(bool visible) {
+    if (mPreview) {
+        mPreview->setEnvironmentVisible(visible);
+    }
+}
+
+void FilamentApp::resetPreviewCamera() {
+    createPreviewCamera();
+    updateCameraProjection();
+    if (mCamera && mCameraManipulator) {
+        filament::math::float3 eye, center, up;
+        mCameraManipulator->getLookAt(&eye, &center, &up);
+        mCamera->lookAt(eye, center, up);
+    }
+}
+
+// ----------------------------------------------------------------------------
 // 场景网格加载 / 卸载
 // ----------------------------------------------------------------------------
 bool FilamentApp::loadScene(const QString& filePath) {
-    mPendingFilePath = filePath;
-    if (!mEngine || !mScene || !mMaterial) {
-        // 引擎未就绪：只记住路径，initialize() 完成后会自动加载
-        return false;
-    }
-    const std::string path = filePath.toLocal8Bit().constData();
-    const size_t startIndex = g_domainEntities.size();  // 本次追加前的实体数
-    const bool ok = LoadAndAddDomainMeshes(mEngine, mScene, mMaterial, path);
-    if (ok) {
-        mLastLoadedEntityStart = startIndex;
-        emit sceneLoaded(filePath);
-    }
-    return ok;
+    // 当前应用已切换为材质预览模式：场景由 MaterialPreview 独占，
+    // 不再接受 SaveDomains 网格。
+    CORE_WARN("[Scene] 材质预览模式不加载网格文件: {}", filePath.toLocal8Bit().constData());
+    return false;
 }
 
 void FilamentApp::clearScene() {
-    if (mEngine && mScene) {
-        RemoveAllDomainMeshes(mEngine, mScene);
-        mLastLoadedEntityStart = 0;
-        setSelectedEntity(-1);
-        emit sceneCleared();
-    }
+    // 材质球是固定场景内容，clearScene 不再移除它。
+    setSelectedEntity(-1);
 }
 
 bool FilamentApp::hasSceneContent() const {
-    return !g_domainEntities.empty();
+    return mPreview != nullptr && mPreview->isReady();
 }
 
 size_t FilamentApp::renderableCount() const {
-    return g_domainEntities.size();
+    return (mPreview && mPreview->isReady()) ? 1u : 0u;
 }
 
 uint64_t FilamentApp::triangleCount() const {
-    return g_totalTriangles;
+    return mPreview ? mPreview->triangleCount() : 0u;
 }
 
 size_t FilamentApp::entityCount() const {
@@ -841,9 +1031,11 @@ void FilamentApp::lookFromDirection(
     float upX, float upY, float upZ) {
     if (!mEngine || !mCameraManipulator || !mView) return;
 
-    filament::math::float3 center;
-    float radius = 0.0f;
-    if (!ComputeSceneBounds(mEngine, center, radius)) return;
+    filament::math::float3 center{ 0.0f, 0.0f, 0.0f };
+    float radius = 1.0f;
+    if (!mPreview || !mPreview->isReady()) {
+        if (!ComputeSceneBounds(mEngine, center, radius)) return;
+    }
 
     const float dist = radius / 0.4142f * 1.15f;   // tan(22.5°) + 边距
     const filament::math::float3 from = normalize(
