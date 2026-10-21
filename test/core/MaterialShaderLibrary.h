@@ -1,6 +1,7 @@
 #pragma once
 #include <QString>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -18,7 +19,7 @@ namespace MOON {
 	// 这样勾选不同 feature 时拿到的是 matc 实际编译出的源码，而不是手工拼接。
 	class MaterialShaderLibrary {
 	public:
-		MaterialShaderLibrary();
+		MaterialShaderLibrary(const uint8_t* packageData, size_t packageSize);
 		~MaterialShaderLibrary();
 
 		MaterialShaderLibrary(const MaterialShaderLibrary&) = delete;

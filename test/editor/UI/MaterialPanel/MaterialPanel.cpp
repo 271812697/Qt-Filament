@@ -46,6 +46,9 @@ namespace MOON {
 
 			QObject::connect(mWidget, &MaterialWidget::variantKeyChanged,
 				mShaderPanel, &ShaderPanel::SetVariantKey);
+			QObject::connect(mWidget, &MaterialWidget::materialChanged,
+				mShaderPanel, &ShaderPanel::SetMaterialIndex);
+			mShaderPanel->SetMaterialIndex(mWidget->materialIndex());
 			mShaderPanel->SetVariantKey(mWidget->variantKey());
 		}
 

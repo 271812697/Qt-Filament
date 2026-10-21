@@ -11,9 +11,11 @@
 #include "Widgets/TextureProperty.h"
 
 #include <QColor>
+#include <QComboBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 
 #include <functional>
@@ -274,11 +276,40 @@ namespace MOON {
 				}
 				QPushButton#MaterialButton:hover { border-color: #268bd2; }
 				QPushButton#MaterialButton:pressed { padding-top: 5px; padding-left: 11px; }
+				QComboBox#MaterialSelector {
+					color: #d7dae0;
+					background: #1e1f23;
+					border: 1px solid #3a3a40;
+					border-radius: 3px;
+					padding: 3px 8px;
+				}
+				QComboBox#MaterialSelector:hover { border-color: #268bd2; }
+				QComboBox#MaterialSelector QAbstractItemView {
+					color: #d7dae0;
+					background: #242428;
+					selection-background-color: #264f78;
+					border: 1px solid #3a3a40;
+				}
 			)");
 
 			auto* layout = new QVBoxLayout(mSelf);
 			layout->setContentsMargins(0, 0, 0, 0);
 			layout->setSpacing(2);
+
+			auto* selectorRow = new QWidget(mSelf);
+			auto* selectorLayout = new QHBoxLayout(selectorRow);
+			selectorLayout->setContentsMargins(8, 8, 8, 2);
+			selectorLayout->setSpacing(8);
+			auto* selectorLabel = new QLabel(QStringLiteral("Material"), selectorRow);
+			selectorLabel->setObjectName(QStringLiteral("MaterialInfo"));
+			selectorLabel->setStyleSheet(QStringLiteral("padding: 0;"));
+			mMaterialCombo = new QComboBox(selectorRow);
+			mMaterialCombo->setObjectName(QStringLiteral("MaterialSelector"));
+			mMaterialCombo->addItems(FilamentApp::instance().previewMaterialNames());
+			mMaterialCombo->setCurrentIndex(FilamentApp::instance().previewMaterialIndex());
+			selectorLayout->addWidget(selectorLabel);
+			selectorLayout->addWidget(mMaterialCombo, 1);
+			layout->addWidget(selectorRow);
 
 			mInfo = new QLabel(mSelf);
 			mInfo->setObjectName("MaterialInfo");
@@ -354,6 +385,18 @@ namespace MOON {
 			QObject::connect(&FilamentApp::instance(), &FilamentApp::previewMaterialReset,
 				mSelf, &MaterialWidget::RefreshValues);
 
+			QObject::connect(mMaterialCombo,
+				QOverload<int>::of(&QComboBox::currentIndexChanged),
+				mSelf, [this](int index) {
+					if (index < 0 || index == mMaterialIndex) {
+						return;
+					}
+					mMaterialIndex = index;
+					FilamentApp::instance().setPreviewMaterialIndex(index);
+					emit mSelf->materialChanged(index);
+					refreshValues();
+				});
+
 			refreshValues();
 		}
 
@@ -361,6 +404,14 @@ namespace MOON {
 			auto& app = FilamentApp::instance();
 			if (mInfo) {
 				mInfo->setText(QStringLiteral("Previewing: %1").arg(app.previewMaterialName()));
+			}
+			if (mMaterialCombo) {
+				const int index = app.previewMaterialIndex();
+				if (index >= 0) {
+					QSignalBlocker blocker(mMaterialCombo);
+					mMaterialCombo->setCurrentIndex(index);
+				}
+				mMaterialIndex = index;
 			}
 			for (auto& group : mGroups) {
 				group.second->updateWidgetValue();
@@ -371,10 +422,16 @@ namespace MOON {
 			return mVariants;
 		}
 
+		int materialIndex() const {
+			return mMaterialIndex;
+		}
+
 	private:
 		friend class MaterialWidget;
 		MaterialWidget* mSelf = nullptr;
 		QLabel* mInfo = nullptr;
+		QComboBox* mMaterialCombo = nullptr;
+		int mMaterialIndex = 0;
 		int mVariants = MaterialShaderLibrary::DefaultVariant();
 		std::vector<std::pair<CollapsibleGroupBoxWidget*, PropertyComponent*>> mGroups;
 	};
@@ -391,6 +448,10 @@ namespace MOON {
 	int MaterialWidget::variantKey() const {
 		return mInternal ? mInternal->variantKey()
 			: MaterialShaderLibrary::DefaultVariant();
+	}
+
+	int MaterialWidget::materialIndex() const {
+		return mInternal ? mInternal->materialIndex() : 0;
 	}
 
 	void MaterialWidget::RefreshValues() {

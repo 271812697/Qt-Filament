@@ -1,7 +1,5 @@
 #include "MaterialShaderLibrary.h"
 
-#include "MaterialPreviewPackage.h"
-
 #include <filaflat/ChunkContainer.h>
 #include <filaflat/DictionaryReader.h>
 #include <filaflat/MaterialChunk.h>
@@ -33,12 +31,11 @@ namespace MOON {
 		std::map<int, QString> fragment;
 		bool valid = false;
 
-		Impl() {
+		Impl(const uint8_t* packageData, size_t packageSize) {
 			container = std::make_unique<filaflat::ChunkContainer>(
-				MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_DATA,
-				MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_SIZE);
+				packageData, packageSize);
 			if (!container->parse()) {
-				qWarning() << "MaterialShaderLibrary: cannot parse material_preview package";
+				qWarning() << "MaterialShaderLibrary: cannot parse material package";
 				return;
 			}
 			if (!filaflat::DictionaryReader::unflatten(
@@ -96,8 +93,9 @@ namespace MOON {
 		}
 	};
 
-	MaterialShaderLibrary::MaterialShaderLibrary()
-		: mImpl(std::make_unique<Impl>()) {
+	MaterialShaderLibrary::MaterialShaderLibrary(
+		const uint8_t* packageData, size_t packageSize)
+		: mImpl(std::make_unique<Impl>(packageData, packageSize)) {
 	}
 
 	MaterialShaderLibrary::~MaterialShaderLibrary() = default;

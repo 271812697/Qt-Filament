@@ -14,9 +14,12 @@ namespace MOON {
 
 		// 当前 Variant Features 勾选出的 Filament variant key
 		int variantKey() const;
+		// 当前预览材质在 MaterialAssets() 中的索引
+		int materialIndex() const;
 
 	signals:
 		void variantKeyChanged(int key);
+		void materialChanged(int index);
 
 	public slots:
 		// 引擎初始化完成 / 参数被外部复位后，把 Filament 侧的当前值同步回控件

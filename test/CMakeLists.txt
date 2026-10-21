@@ -38,34 +38,81 @@ set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${PRO
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 20)
 
 # ---------------------------------------------------------------------------
-# 项目自带的材质：用同一棵 Filament 树里的 matc 编译，再用 resgen 嵌入。
-# 这样远端机器上的 Filament 版本无论是什么，材质包版本都与链接的 library 匹配。
+# 项目自带的多个材质：用同一棵 Filament 树里的 matc 编译，再用 resgen 嵌入。
+# 远端机器上的 Filament 版本无论是什么，材质包版本都与链接的 library 匹配。
 # ---------------------------------------------------------------------------
-set(MATERIAL_PREVIEW_MAT "${CMAKE_CURRENT_SOURCE_DIR}/materials/material_preview.mat")
-set(MATERIAL_PREVIEW_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/material_preview")
-set(MATERIAL_PREVIEW_FILAMAT "${MATERIAL_PREVIEW_GEN_DIR}/material_preview.filamat")
-set(MATERIAL_PREVIEW_HEADER "${MATERIAL_PREVIEW_GEN_DIR}/MaterialPreviewPackage.h")
-set(MATERIAL_PREVIEW_SOURCE "${MATERIAL_PREVIEW_GEN_DIR}/MaterialPreviewPackage.c")
-
-add_custom_command(
-    OUTPUT
-        "${MATERIAL_PREVIEW_FILAMAT}"
-        "${MATERIAL_PREVIEW_HEADER}"
-        "${MATERIAL_PREVIEW_SOURCE}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${MATERIAL_PREVIEW_GEN_DIR}"
-    COMMAND $<TARGET_FILE:matc> -a opengl -p desktop
-            -o "${MATERIAL_PREVIEW_FILAMAT}" "${MATERIAL_PREVIEW_MAT}"
-    COMMAND $<TARGET_FILE:resgen> -c -p MaterialPreviewPackage "${MATERIAL_PREVIEW_FILAMAT}"
-    WORKING_DIRECTORY "${MATERIAL_PREVIEW_GEN_DIR}"
-    DEPENDS matc resgen "${MATERIAL_PREVIEW_MAT}"
-    COMMENT "Compiling project material_preview.mat with matc"
-    VERBATIM
+set(MATERIAL_ASSET_IDS
+    material_preview
+    lit_opaque
+    cloth
+    unlit
+    subsurface
 )
-add_custom_target(material_preview_package
-    DEPENDS "${MATERIAL_PREVIEW_FILAMAT}" "${MATERIAL_PREVIEW_HEADER}" "${MATERIAL_PREVIEW_SOURCE}")
+set(MATERIAL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/materials")
+set(MATERIAL_PACKAGE_OUTPUTS)
+set(MATERIAL_PACKAGE_SOURCES)
+
+# Debug 版 matc 在复杂材质（纹理/clearCoat/refraction）上会卡住，
+# 材质统一用 Release 版 matc 编译；若还没有就先构建一次 Release matc。
+if(CMAKE_CONFIGURATION_TYPES)
+    set(MATC_RELEASE "${CMAKE_BINARY_DIR}/filament/tools/matc/Release/matc.exe")
+    if(EXISTS "${MATC_RELEASE}")
+        set(MATC_COMMAND "${MATC_RELEASE}")
+        set(MATC_DEPENDENCY "")
+    else()
+        set(MATC_RELEASE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/matc_release.stamp")
+        add_custom_command(
+            OUTPUT "${MATC_RELEASE_STAMP}"
+            COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}"
+                    --config Release --target matc
+            COMMAND ${CMAKE_COMMAND} -E touch "${MATC_RELEASE_STAMP}"
+            COMMENT "Building release matc for material compilation"
+            VERBATIM
+        )
+        add_custom_target(matc_release DEPENDS "${MATC_RELEASE_STAMP}")
+        # 先让当前配置的 Debug Filament 构建完，避免 MSBuild 同时构建
+        # Debug/Release filamat 时争用同一个 combined lib 临时文件。
+        add_dependencies(matc_release filament)
+        add_dependencies(${TARGET_NAME} matc_release)
+        set(MATC_COMMAND "${MATC_RELEASE}")
+        set(MATC_DEPENDENCY "${MATC_RELEASE_STAMP}")
+    endif()
+else()
+    set(MATC_COMMAND "$<TARGET_FILE:matc>")
+    set(MATC_DEPENDENCY matc)
+endif()
+
+foreach(MATERIAL_ID IN LISTS MATERIAL_ASSET_IDS)
+    set(MATERIAL_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/materials/${MATERIAL_ID}.mat")
+    set(MATERIAL_FILAMAT "${MATERIAL_GEN_DIR}/${MATERIAL_ID}.filamat")
+    set(MATERIAL_PACKAGE "MaterialPackage_${MATERIAL_ID}")
+    set(MATERIAL_HEADER "${MATERIAL_GEN_DIR}/${MATERIAL_PACKAGE}.h")
+    set(MATERIAL_SOURCE_C "${MATERIAL_GEN_DIR}/${MATERIAL_PACKAGE}.c")
+
+    add_custom_command(
+        OUTPUT
+            "${MATERIAL_FILAMAT}"
+            "${MATERIAL_HEADER}"
+            "${MATERIAL_SOURCE_C}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${MATERIAL_GEN_DIR}"
+        COMMAND "${MATC_COMMAND}" -a opengl -p desktop
+                -o "${MATERIAL_FILAMAT}" "${MATERIAL_SOURCE}"
+        COMMAND $<TARGET_FILE:resgen> -c -p "${MATERIAL_PACKAGE}" "${MATERIAL_FILAMAT}"
+        WORKING_DIRECTORY "${MATERIAL_GEN_DIR}"
+        DEPENDS ${MATC_DEPENDENCY} resgen "${MATERIAL_SOURCE}"
+        COMMENT "Compiling project material ${MATERIAL_ID}.mat with matc"
+        VERBATIM
+    )
+
+    list(APPEND MATERIAL_PACKAGE_OUTPUTS
+        "${MATERIAL_FILAMAT}" "${MATERIAL_HEADER}" "${MATERIAL_SOURCE_C}")
+    list(APPEND MATERIAL_PACKAGE_SOURCES "${MATERIAL_SOURCE_C}")
+endforeach()
+
+add_custom_target(material_preview_package DEPENDS ${MATERIAL_PACKAGE_OUTPUTS})
 add_dependencies(${TARGET_NAME} material_preview_package)
-target_sources(${TARGET_NAME} PRIVATE "${MATERIAL_PREVIEW_SOURCE}")
-target_include_directories(${TARGET_NAME} PRIVATE "${MATERIAL_PREVIEW_GEN_DIR}")
+target_sources(${TARGET_NAME} PRIVATE ${MATERIAL_PACKAGE_SOURCES})
+target_include_directories(${TARGET_NAME} PRIVATE "${MATERIAL_GEN_DIR}")
 
 set(QtPluginsDir "${QT_DIR}/../../../plugins")
 file(GLOB QtPluginIconEnginesDLLs  "${QtPluginsDir}/iconengines/qsvgicon*.dll")

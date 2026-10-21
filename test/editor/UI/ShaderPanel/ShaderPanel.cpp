@@ -4,6 +4,7 @@
 #include "GlslHighlighter.h"
 #include "ShaderCodeEditor.h"
 
+#include "core/MaterialCatalog.h"
 #include "core/MaterialShaderLibrary.h"
 
 #include <QApplication>
@@ -19,6 +20,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <memory>
 #include <vector>
 
 namespace MOON {
@@ -85,9 +87,9 @@ namespace MOON {
 			infoLayout->setContentsMargins(8, 2, 8, 2);
 			infoLayout->setSpacing(10);
 
-			auto* material = new QLabel(
+			mMaterialLabel = new QLabel(
 				QString::fromUtf8(ShaderSources::kDefaultMaterialName), infoBar);
-			material->setObjectName(QStringLiteral("ShaderInfo"));
+			mMaterialLabel->setObjectName(QStringLiteral("ShaderInfo"));
 
 			auto* meta = new QLabel(
 				QStringLiteral("%1 · read-only")
@@ -103,7 +105,7 @@ namespace MOON {
 			mCopy->setCursor(Qt::PointingHandCursor);
 			mCopy->setToolTip(QStringLiteral("Copy the active GLSL tab"));
 
-			infoLayout->addWidget(material);
+			infoLayout->addWidget(mMaterialLabel);
 			infoLayout->addWidget(meta);
 			infoLayout->addStretch(1);
 			infoLayout->addWidget(mStats);
@@ -173,8 +175,15 @@ namespace MOON {
 
 			mCompute->SetSource(
 				QString::fromUtf8(ShaderSources::kDefaultMaterialComputeNote).trimmed());
-			mMaterial->SetSource(LoadShaderResource(
-				ShaderSources::kDefaultMaterialMatResource).trimmed());
+
+			const auto& assets = MaterialAssets();
+			mMaterialIndex = DefaultMaterialIndex();
+			if (mMaterialIndex >= 0 && mMaterialIndex < static_cast<int>(assets.size())) {
+				const MaterialAsset& asset = assets[mMaterialIndex];
+				mLibrary = std::make_unique<MaterialShaderLibrary>(asset.data, asset.size);
+				mMaterialLabel->setText(QString::fromLatin1(asset.displayName));
+				mMaterial->SetSource(LoadShaderResource(asset.matResource).trimmed());
+			}
 			mMaterialStats->setText(QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
 
 			QObject::connect(mTabs, &QTabWidget::currentChanged, mSelf, [this](int) {
@@ -216,6 +225,25 @@ namespace MOON {
 			applyVariant(key);
 		}
 
+		void SetMaterialIndex(int index) {
+			const auto& assets = MaterialAssets();
+			if (index < 0 || index >= static_cast<int>(assets.size())) {
+				return;
+			}
+			if (index == mMaterialIndex && mLibrary) {
+				return;
+			}
+
+			mMaterialIndex = index;
+			const MaterialAsset& asset = assets[index];
+			mLibrary = std::make_unique<MaterialShaderLibrary>(asset.data, asset.size);
+			mMaterialLabel->setText(QString::fromLatin1(asset.displayName));
+			mMaterial->SetSource(LoadShaderResource(asset.matResource).trimmed());
+			mMaterialStats->setText(QStringLiteral("%1 lines").arg(mMaterial->blockCount()));
+
+			applyVariant(mCurrentVariant);
+		}
+
 		ShaderCodeEditor* CreateEditor(QWidget* parent, bool materialSyntax) {
 			auto* editor = new ShaderCodeEditor(parent);
 			new GlslHighlighter(editor->document(), materialSyntax);
@@ -224,18 +252,25 @@ namespace MOON {
 
 		int resolveDefaultVariant() const {
 			const int preferred = MaterialShaderLibrary::DefaultVariant();
-			if (mLibrary.HasVertex(preferred) && mLibrary.HasFragment(preferred)) {
+			if (!mLibrary) {
 				return preferred;
 			}
-			const std::vector<int> variants = mLibrary.AvailableVariants();
+			if (mLibrary->HasVertex(preferred) && mLibrary->HasFragment(preferred)) {
+				return preferred;
+			}
+			const std::vector<int> variants = mLibrary->AvailableVariants();
 			return variants.empty() ? preferred : variants.front();
 		}
 
 		void applyVariant(int key) {
 			mCurrentVariant = key & 0xFF;
 
-			const QString vertex = mLibrary.VertexSource(mCurrentVariant);
-			const QString fragment = mLibrary.FragmentSource(mCurrentVariant);
+			QString vertex;
+			QString fragment;
+			if (mLibrary) {
+				vertex = mLibrary->VertexSource(mCurrentVariant);
+				fragment = mLibrary->FragmentSource(mCurrentVariant);
+			}
 			mVertexAvailable = !vertex.isEmpty();
 			mFragmentAvailable = !fragment.isEmpty();
 
@@ -252,7 +287,7 @@ namespace MOON {
 		QString missingSourceMessage(const QString& stage, int key) const {
 			return QStringLiteral(
 				"// No compiled %1 shader for variant %2.\n"
-				"// aiDefaultMat only contains a subset of feature combinations.\n"
+				"// This material only contains a subset of feature combinations.\n"
 				"// Change the Variant Features in the Material panel.\n")
 				.arg(stage)
 				.arg(MaterialShaderLibrary::VariantName(key));
@@ -298,16 +333,18 @@ namespace MOON {
 
 	private:
 		ShaderPanel* mSelf = nullptr;
-		MaterialShaderLibrary mLibrary;
+		std::unique_ptr<MaterialShaderLibrary> mLibrary;
 		QTabWidget* mTabs = nullptr;
 		ShaderCodeEditor* mVertex = nullptr;
 		ShaderCodeEditor* mFragment = nullptr;
 		ShaderCodeEditor* mCompute = nullptr;
 		ShaderCodeEditor* mMaterial = nullptr;
+		QLabel* mMaterialLabel = nullptr;
 		QLabel* mStats = nullptr;
 		QLabel* mMaterialStats = nullptr;
 		QPushButton* mCopy = nullptr;
 		QPushButton* mMaterialCopy = nullptr;
+		int mMaterialIndex = 0;
 		int mCurrentVariant = 0;
 		bool mVertexAvailable = false;
 		bool mFragmentAvailable = false;
@@ -325,6 +362,12 @@ namespace MOON {
 	void ShaderPanel::SetVariantKey(int key) {
 		if (mInternal) {
 			mInternal->SetVariantKey(key);
+		}
+	}
+
+	void ShaderPanel::SetMaterialIndex(int index) {
+		if (mInternal) {
+			mInternal->SetMaterialIndex(index);
 		}
 	}
 

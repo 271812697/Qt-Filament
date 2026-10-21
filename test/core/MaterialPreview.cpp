@@ -1,4 +1,5 @@
 #include "MaterialPreview.h"
+#include "MaterialCatalog.h"
 
 #include "log.h"
 
@@ -26,8 +27,6 @@
 #include <math/mat3.h>
 #include <math/scalar.h>
 #include <utils/EntityManager.h>
-
-#include "MaterialPreviewPackage.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -585,7 +584,11 @@ namespace MOON {
 	} // namespace
 
 	QString MaterialPreview::materialName() const {
-		return QStringLiteral("MaterialPreview (material_preview.mat)");
+		const auto& assets = MaterialAssets();
+		if (mMaterialIndex >= 0 && mMaterialIndex < static_cast<int>(assets.size())) {
+			return QString::fromLatin1(assets[mMaterialIndex].displayName);
+		}
+		return QStringLiteral("Material Preview");
 	}
 
 	namespace {
@@ -663,11 +666,17 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 	}
 
 	bool MaterialPreview::createMaterial() {
+		const auto& assets = MaterialAssets();
+		if (mMaterialIndex < 0 || mMaterialIndex >= static_cast<int>(assets.size())) {
+			mMaterialIndex = DefaultMaterialIndex();
+		}
+		const MaterialAsset& asset = assets[mMaterialIndex];
+
 		mMaterial = filament::Material::Builder()
-			.package(MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_DATA,
-				MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_SIZE)
+			.package(asset.data, asset.size)
 			.build(*mEngine);
 		if (!mMaterial) {
+			CORE_ERROR("[Preview] 无法加载材质包: {}", asset.id);
 			return false;
 		}
 
@@ -677,6 +686,54 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 		}
 
 		applyMaterial();
+		return true;
+	}
+
+	bool MaterialPreview::setMaterialIndex(int index) {
+		const auto& assets = MaterialAssets();
+		if (index < 0 || index >= static_cast<int>(assets.size())) {
+			return false;
+		}
+		if (index == mMaterialIndex && mMaterialInstance) {
+			return true;
+		}
+
+		const int previousIndex = mMaterialIndex;
+		mMaterialIndex = index;
+		if (!mEngine || !mScene) {
+			return true;
+		}
+
+		const MaterialAsset& asset = assets[index];
+		filament::Material* newMaterial = filament::Material::Builder()
+			.package(asset.data, asset.size)
+			.build(*mEngine);
+		if (!newMaterial) {
+			CORE_ERROR("[Preview] 材质包创建失败: {}", asset.id);
+			mMaterialIndex = previousIndex;
+			return false;
+		}
+		filament::MaterialInstance* newInstance = newMaterial->createInstance();
+		if (!newInstance) {
+			CORE_ERROR("[Preview] 材质实例创建失败: {}", asset.id);
+			mEngine->destroy(newMaterial);
+			mMaterialIndex = previousIndex;
+			return false;
+		}
+
+		mMaterial = newMaterial;
+		mMaterialInstance = newInstance;
+		applyMaterial();
+
+		// 这个 Filament 版本的 RenderableManager 没有 setMaterialInstance，
+		// 切换材质后重建 renderable（顶点/索引缓冲也会一起重建）。
+		if (mEntity) {
+			rebuildMesh(mMeshType);
+		}
+
+		// 旧材质实例可能仍被上一帧的 command buffer 引用；不在切换时同步 destroy，
+		// 避免在渲染线程等待时卡住。引擎销毁时会统一回收。
+		CORE_INFO("[Preview] 切换材质: {}", asset.id);
 		return true;
 	}
 
@@ -959,17 +1016,51 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 	}
 
 	void MaterialPreview::applyMaterial() {
-		if (!mMaterialInstance) {
+		if (!mMaterialInstance || !mMaterial) {
 			return;
 		}
-		mMaterialInstance->setParameter("baseColor", filament::RgbType::sRGB,
-			filament::math::float3{
-				(float)mBaseColor.redF(),
-				(float)mBaseColor.greenF(),
-				(float)mBaseColor.blueF() });
-		mMaterialInstance->setParameter("metallic", mMetallic);
-		mMaterialInstance->setParameter("roughness", mRoughness);
-		mMaterialInstance->setParameter("reflectance", mReflectance);
+
+		auto has = [this](const char* name) {
+			return mMaterial->hasParameter(name);
+		};
+		auto setFloat = [this, &has](const char* name, float value) {
+			if (has(name)) {
+				mMaterialInstance->setParameter(name, value);
+			}
+		};
+		auto setTexture = [this, &has](const char* name, filament::Texture* texture) {
+			if (has(name)) {
+				mMaterialInstance->setParameter(name, texture,
+					filament::TextureSampler{});
+			}
+		};
+
+		if (has("baseColor")) {
+			mMaterialInstance->setParameter("baseColor", filament::RgbType::sRGB,
+				filament::math::float3{
+					(float)mBaseColor.redF(),
+					(float)mBaseColor.greenF(),
+					(float)mBaseColor.blueF() });
+		}
+		setFloat("metallic", mMetallic);
+		setFloat("roughness", mRoughness);
+		setFloat("reflectance", mReflectance);
+		setFloat("clearCoat", mClearCoat);
+		setFloat("clearCoatRoughness", mClearCoatRoughness);
+		setFloat("transmission", mTransmission);
+		setFloat("ior", mIor);
+		setFloat("thickness", mThickness);
+		// Fade / refraction materials need an explicit alpha.
+		setFloat("alpha", 1.0f);
+		// Specular-glossiness materials use glossiness instead of roughness.
+		setFloat("glossiness", 1.0f - mRoughness);
+
+		setTexture("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture);
+		setTexture("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture);
+		setTexture("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture);
+		setTexture("aoMap", mAoTexture ? mAoTexture : mWhiteTexture);
+		setTexture("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture);
+		setTexture("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture);
 	}
 
 	void MaterialPreview::resetMaterial() {
@@ -990,43 +1081,58 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 
 	void MaterialPreview::setMetallic(float value) {
 		mMetallic = std::clamp(value, 0.0f, 1.0f);
-		if (mMaterialInstance) {
+		if (mMaterialInstance && mMaterial->hasParameter("metallic")) {
 			mMaterialInstance->setParameter("metallic", mMetallic);
 		}
 	}
 
 	void MaterialPreview::setRoughness(float value) {
 		mRoughness = std::clamp(value, 0.0f, 1.0f);
-		if (mMaterialInstance) {
+		if (mMaterialInstance && mMaterial->hasParameter("roughness")) {
 			mMaterialInstance->setParameter("roughness", mRoughness);
 		}
 	}
 
 	void MaterialPreview::setReflectance(float value) {
 		mReflectance = std::clamp(value, 0.0f, 1.0f);
-		if (mMaterialInstance) {
+		if (mMaterialInstance && mMaterial->hasParameter("reflectance")) {
 			mMaterialInstance->setParameter("reflectance", mReflectance);
 		}
 	}
 
 	void MaterialPreview::setClearCoat(float value) {
 		mClearCoat = std::clamp(value, 0.0f, 1.0f);
+		if (mMaterialInstance && mMaterial->hasParameter("clearCoat")) {
+			mMaterialInstance->setParameter("clearCoat", mClearCoat);
+		}
 	}
 
 	void MaterialPreview::setClearCoatRoughness(float value) {
 		mClearCoatRoughness = std::clamp(value, 0.0f, 1.0f);
+		if (mMaterialInstance && mMaterial->hasParameter("clearCoatRoughness")) {
+			mMaterialInstance->setParameter("clearCoatRoughness", mClearCoatRoughness);
+		}
 	}
 
 	void MaterialPreview::setThickness(float value) {
 		mThickness = std::clamp(value, 0.0f, 10.0f);
+		if (mMaterialInstance && mMaterial->hasParameter("thickness")) {
+			mMaterialInstance->setParameter("thickness", mThickness);
+		}
 	}
 
 	void MaterialPreview::setTransmission(float value) {
 		mTransmission = std::clamp(value, 0.0f, 1.0f);
+		if (mMaterialInstance && mMaterial->hasParameter("transmission")) {
+			mMaterialInstance->setParameter("transmission", mTransmission);
+		}
 	}
 
 	void MaterialPreview::setIor(float value) {
 		mIor = std::clamp(value, 1.0f, 3.0f);
+		if (mMaterialInstance && mMaterial->hasParameter("ior")) {
+			mMaterialInstance->setParameter("ior", mIor);
+		}
 	}
 
 	void MaterialPreview::setAlbedoMap(const QString& path) {

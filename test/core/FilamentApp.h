@@ -1,9 +1,10 @@
-﻿#pragma once
+#pragma once
 
 #include "PreviewMesh.h"
 
 #include <QColor>
 #include <QObject>
+#include <QStringList>
 #include <QString>
 #include <math/mat4.h>
 #include <math/vec3.h>
@@ -158,6 +159,9 @@ namespace MOON {
 		// ---- 材质预览（当前场景内容是一个材质球） ----
 		MaterialPreview* materialPreview() const { return mPreview; }
 		QString previewMaterialName() const;
+		int previewMaterialIndex() const;
+		void setPreviewMaterialIndex(int index);
+		QStringList previewMaterialNames() const;
 
 		// 预览网格：Sphere / Ball / Cube / Plane
 		PreviewMesh previewMesh() const;
@@ -217,6 +221,7 @@ namespace MOON {
 		filament::Material* mMaterial = nullptr;
 		MaterialPreview* mPreview = nullptr;
 		PreviewMesh mPreviewMesh = PreviewMesh::Sphere;
+		int mPreviewMaterialIndex = 0;
 		utils::Entity mLight;
 		filament::camutils::Manipulator<float>* mCameraManipulator = nullptr;
 		QString mPendingFilePath; // 引擎就绪前选中的文件

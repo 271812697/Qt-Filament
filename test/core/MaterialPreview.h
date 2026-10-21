@@ -63,6 +63,10 @@ namespace MOON {
 		PreviewMesh meshType() const { return mMeshType; }
 		void setMeshType(PreviewMesh type);
 
+		// ---- 预览材质（来自内嵌的 MaterialCatalog） ----
+		int materialIndex() const { return mMaterialIndex; }
+		bool setMaterialIndex(int index);
+
 		QString materialName() const;
 
 		// ---- 默认 PBR 参数（baseColor 以 sRGB 保存，提交给 Filament 时做转换） ----
@@ -124,6 +128,7 @@ namespace MOON {
 
 		filament::Material* mMaterial = nullptr;
 		filament::MaterialInstance* mMaterialInstance = nullptr;
+		int mMaterialIndex = 0;
 
 		filament::VertexBuffer* mVertexBuffer = nullptr;
 		filament::IndexBuffer* mIndexBuffer = nullptr;

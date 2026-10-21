@@ -1,4 +1,5 @@
 #include "FilamentApp.h"
+#include "MaterialCatalog.h"
 #include "MaterialPreview.h"
 #include "log.h"
 
@@ -635,8 +636,9 @@ bool FilamentApp::initialize(QOpenGLWidget* hostWidget, filament::backend::Platf
 
     // 场景内容：预览网格 + 默认 PBR 材质 + studio IBL + 方向光
     mPreview = new MaterialPreview();
-    // 引擎就绪前用户可能已经选了 Ball/Cube/Plane；先记住，initialize 时直接建对应网格。
+    // 引擎就绪前用户可能已经选了 Ball/Cube/Plane 或材质；先记住，initialize 时直接使用。
     mPreview->setMeshType(mPreviewMesh);
+    mPreview->setMaterialIndex(mPreviewMaterialIndex);
     if (!mPreview->initialize(mEngine, mScene)) {
         CORE_ERROR("[Preview] 材质预览场景初始化失败");
         return false;
@@ -686,7 +688,26 @@ void FilamentApp::createPreviewCamera() {
 }
 
 QString FilamentApp::previewMaterialName() const {
-    return mPreview ? mPreview->materialName() : QStringLiteral("Default PBR");
+    return mPreview ? mPreview->materialName() : QStringLiteral("Material Preview");
+}
+
+int FilamentApp::previewMaterialIndex() const {
+    return mPreview ? mPreview->materialIndex() : mPreviewMaterialIndex;
+}
+
+void FilamentApp::setPreviewMaterialIndex(int index) {
+    mPreviewMaterialIndex = index;
+    if (mPreview) {
+        mPreview->setMaterialIndex(index);
+    }
+}
+
+QStringList FilamentApp::previewMaterialNames() const {
+    QStringList names;
+    for (const MaterialAsset& asset : MaterialAssets()) {
+        names << QString::fromLatin1(asset.displayName);
+    }
+    return names;
 }
 
 PreviewMesh FilamentApp::previewMesh() const {

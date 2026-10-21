@@ -121,6 +121,10 @@
         <file>icons/pqEyeballClosed.svg</file>
     </qresource>
     <qresource prefix="/shaders">
-        <file alias="MaterialPreview.mat.txt">shaders/MaterialPreview.mat.txt</file>
+        <file alias="material_preview.mat.txt">shaders/material_preview.mat.txt</file>
+        <file alias="lit_opaque.mat.txt">shaders/lit_opaque.mat.txt</file>
+        <file alias="cloth.mat.txt">shaders/cloth.mat.txt</file>
+        <file alias="unlit.mat.txt">shaders/unlit.mat.txt</file>
+        <file alias="subsurface.mat.txt">shaders/subsurface.mat.txt</file>
     </qresource>
 </RCC>
