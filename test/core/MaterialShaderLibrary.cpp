@@ -76,6 +76,9 @@ namespace MOON {
 				QString source = QString::fromUtf8(
 					reinterpret_cast<const char*>(content.data()),
 					static_cast<int>(content.size()));
+				// matc -g 的预处理 GLSL 在部分版本会把 "enable" 写成 "enabl4 e"
+				// （调试输出插入行号时的已知瑕疵）；这里只修复这一处。
+				source.replace(QStringLiteral("enabl4 e"), QStringLiteral("enable"));
 				if (stage == ShaderStage::VERTEX) {
 					vertex[filtered.key] = std::move(source);
 				}

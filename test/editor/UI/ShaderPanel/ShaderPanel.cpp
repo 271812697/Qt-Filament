@@ -346,7 +346,11 @@ namespace MOON {
 
 			QStringList arguments{
 				QStringLiteral("-a"), QStringLiteral("opengl"),
-				QStringLiteral("-p"), QStringLiteral("desktop") };
+				QStringLiteral("-p"), QStringLiteral("desktop"),
+				// 生成可读的预处理 GLSL（参数名/宏都保留），而不是
+				// spirv-cross 优化后的 a/b/c 临时变量。
+				QStringLiteral("-g"),
+				QStringLiteral("--no-insert-line-directives") };
 			if (!filter.isEmpty()) {
 				arguments << QStringLiteral("-V") << filter;
 			}
