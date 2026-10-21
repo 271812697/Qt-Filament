@@ -1,6 +1,6 @@
 #include "MaterialShaderLibrary.h"
 
-#include "generated/resources/resources.h"
+#include "MaterialPreviewPackage.h"
 
 #include <filaflat/ChunkContainer.h>
 #include <filaflat/DictionaryReader.h>
@@ -35,9 +35,10 @@ namespace MOON {
 
 		Impl() {
 			container = std::make_unique<filaflat::ChunkContainer>(
-				RESOURCES_AIDEFAULTMAT_DATA, RESOURCES_AIDEFAULTMAT_SIZE);
+				MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_DATA,
+				MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_SIZE);
 			if (!container->parse()) {
-				qWarning() << "MaterialShaderLibrary: cannot parse aiDefaultMat package";
+				qWarning() << "MaterialShaderLibrary: cannot parse material_preview package";
 				return;
 			}
 			if (!filaflat::DictionaryReader::unflatten(

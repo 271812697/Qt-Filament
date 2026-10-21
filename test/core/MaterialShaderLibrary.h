@@ -14,7 +14,7 @@ namespace MOON {
 		uint8_t bit;
 	};
 
-	// 从应用内嵌的 aiDefaultMat.filamat 包中按 variant 提取 OpenGL GLSL。
+	// 从应用内嵌的 material_preview.filamat 包中按 variant 提取 OpenGL GLSL。
 	// 这样勾选不同 feature 时拿到的是 matc 实际编译出的源码，而不是手工拼接。
 	class MaterialShaderLibrary {
 	public:

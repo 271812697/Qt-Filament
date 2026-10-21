@@ -28,17 +28,44 @@ target_link_libraries(${TARGET_NAME} PUBLIC imageio)
 target_link_libraries(${TARGET_NAME} PUBLIC image)
 target_link_libraries(${TARGET_NAME} PUBLIC stb)
 target_link_libraries(${TARGET_NAME} PUBLIC camutils
-suzanne-resources
-sample-resources
 )
 
 target_include_directories(${TARGET_NAME} PUBLIC $<BUILD_INTERFACE: ${Extern_DIR}> $<BUILD_INTERFACE: ${CMAKE_CURRENT_SOURCE_DIR}/include>)
-target_include_directories(${TARGET_NAME} PRIVATE "${CMAKE_BINARY_DIR}/filament/samples")
 # 材质预览的 IBL 直接读取仓库里的 studio HDR，避免依赖启动时的工作目录
 target_compile_definitions(${TARGET_NAME} PRIVATE
     QT_FILAMENT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 20)
+
+# ---------------------------------------------------------------------------
+# 项目自带的材质：用同一棵 Filament 树里的 matc 编译，再用 resgen 嵌入。
+# 这样远端机器上的 Filament 版本无论是什么，材质包版本都与链接的 library 匹配。
+# ---------------------------------------------------------------------------
+set(MATERIAL_PREVIEW_MAT "${CMAKE_CURRENT_SOURCE_DIR}/materials/material_preview.mat")
+set(MATERIAL_PREVIEW_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/material_preview")
+set(MATERIAL_PREVIEW_FILAMAT "${MATERIAL_PREVIEW_GEN_DIR}/material_preview.filamat")
+set(MATERIAL_PREVIEW_HEADER "${MATERIAL_PREVIEW_GEN_DIR}/MaterialPreviewPackage.h")
+set(MATERIAL_PREVIEW_SOURCE "${MATERIAL_PREVIEW_GEN_DIR}/MaterialPreviewPackage.c")
+
+add_custom_command(
+    OUTPUT
+        "${MATERIAL_PREVIEW_FILAMAT}"
+        "${MATERIAL_PREVIEW_HEADER}"
+        "${MATERIAL_PREVIEW_SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${MATERIAL_PREVIEW_GEN_DIR}"
+    COMMAND $<TARGET_FILE:matc> -a opengl -p desktop
+            -o "${MATERIAL_PREVIEW_FILAMAT}" "${MATERIAL_PREVIEW_MAT}"
+    COMMAND $<TARGET_FILE:resgen> -c -p MaterialPreviewPackage "${MATERIAL_PREVIEW_FILAMAT}"
+    WORKING_DIRECTORY "${MATERIAL_PREVIEW_GEN_DIR}"
+    DEPENDS matc resgen "${MATERIAL_PREVIEW_MAT}"
+    COMMENT "Compiling project material_preview.mat with matc"
+    VERBATIM
+)
+add_custom_target(material_preview_package
+    DEPENDS "${MATERIAL_PREVIEW_FILAMAT}" "${MATERIAL_PREVIEW_HEADER}" "${MATERIAL_PREVIEW_SOURCE}")
+add_dependencies(${TARGET_NAME} material_preview_package)
+target_sources(${TARGET_NAME} PRIVATE "${MATERIAL_PREVIEW_SOURCE}")
+target_include_directories(${TARGET_NAME} PRIVATE "${MATERIAL_PREVIEW_GEN_DIR}")
 
 set(QtPluginsDir "${QT_DIR}/../../../plugins")
 file(GLOB QtPluginIconEnginesDLLs  "${QtPluginsDir}/iconengines/qsvgicon*.dll")

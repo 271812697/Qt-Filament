@@ -1,21 +1,21 @@
 #pragma once
 
 // The Shader panel reads the preview material's GLSL directly from the
-// aiDefaultMat package embedded in the application. The variant checkboxes
-// select the same filaflat chunks that the Filament renderer uses.
+// project-owned material package embedded in the application. The variant
+// checkboxes select the same filaflat chunks that the Filament renderer uses.
 //
 // The original .mat source consumed by matc is stored as a Qt resource:
-//   :/shaders/DefaultMaterial.mat.txt
+//   :/shaders/MaterialPreview.mat.txt
 //
 // Source material:
-//   filament/samples/materials/aiDefaultMat.mat
+//   test/materials/material_preview.mat
 
 namespace MOON::ShaderSources {
 
-inline constexpr const char* kDefaultMaterialName = "AssimpDefaultMat (aiDefaultMat)";
+inline constexpr const char* kDefaultMaterialName = "MaterialPreview (material_preview.mat)";
 inline constexpr const char* kDefaultMaterialApi = "OpenGL 410 core / desktop";
 inline constexpr const char* kDefaultMaterialMatResource =
-	":/shaders/DefaultMaterial.mat.txt";
+	":/shaders/MaterialPreview.mat.txt";
 
 inline constexpr const char* kDefaultMaterialComputeNote =
 	"// The preview material is a surface (lit) material.\n"

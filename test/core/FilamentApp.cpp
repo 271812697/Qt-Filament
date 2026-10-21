@@ -1,4 +1,4 @@
-﻿#include "FilamentApp.h"
+#include "FilamentApp.h"
 #include "MaterialPreview.h"
 #include "log.h"
 
@@ -26,7 +26,6 @@
 #include <filament/Viewport.h>
 #include <utils/EntityManager.h>
 #include <camutils/Manipulator.h>
-#include "generated/resources/resources.h"
 
 #include <algorithm>
 #include <cmath>

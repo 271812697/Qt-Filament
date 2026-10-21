@@ -31,7 +31,7 @@ namespace MOON {
 	//
 	// FilamentApp 持有 Engine / View / Camera / SwapChain；这个类只负责“画什么”：
 	//   - 一个单位 UV 球（TANGENTS 用四元数编码，和 Filament lit 材质兼容）
-	//   - 默认 PBR 材质（samples 里编译好的 aiDefaultMat）
+	//   - 默认 PBR 材质（项目自带 material_preview.mat，构建时用 matc 编译并嵌入）
 	//   - studio HDR 预滤波得到的 IBL（间接光 + 可选环境天空盒）
 	//   - 一盏方向光，让金属/粗糙度在 IBL 之外还有明确的高光方向
 	//

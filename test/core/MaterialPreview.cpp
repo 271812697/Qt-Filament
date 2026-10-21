@@ -27,7 +27,7 @@
 #include <math/scalar.h>
 #include <utils/EntityManager.h>
 
-#include "generated/resources/resources.h"
+#include "MaterialPreviewPackage.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -585,7 +585,7 @@ namespace MOON {
 	} // namespace
 
 	QString MaterialPreview::materialName() const {
-		return QStringLiteral("Default PBR (aiDefaultMat)");
+		return QStringLiteral("MaterialPreview (material_preview.mat)");
 	}
 
 	namespace {
@@ -664,7 +664,8 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 
 	bool MaterialPreview::createMaterial() {
 		mMaterial = filament::Material::Builder()
-			.package(RESOURCES_AIDEFAULTMAT_DATA, RESOURCES_AIDEFAULTMAT_SIZE)
+			.package(MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_DATA,
+				MATERIALPREVIEWPACKAGE_MATERIAL_PREVIEW_SIZE)
 			.build(*mEngine);
 		if (!mMaterial) {
 			return false;
@@ -957,7 +958,7 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 		return true;
 	}
 
-void MaterialPreview::applyMaterial() {
+	void MaterialPreview::applyMaterial() {
 		if (!mMaterialInstance) {
 			return;
 		}
@@ -969,17 +970,6 @@ void MaterialPreview::applyMaterial() {
 		mMaterialInstance->setParameter("metallic", mMetallic);
 		mMaterialInstance->setParameter("roughness", mRoughness);
 		mMaterialInstance->setParameter("reflectance", mReflectance);
-		mMaterialInstance->setParameter("clearCoat", mClearCoat);
-		mMaterialInstance->setParameter("clearCoatRoughness", mClearCoatRoughness);
-		mMaterialInstance->setParameter("transmission", mTransmission);
-		mMaterialInstance->setParameter("ior", mIor);
-		mMaterialInstance->setParameter("thickness", mThickness);
-		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
 	}
 
 	void MaterialPreview::resetMaterial() {
@@ -1016,69 +1006,27 @@ void MaterialPreview::applyMaterial() {
 		mReflectance = std::clamp(value, 0.0f, 1.0f);
 		if (mMaterialInstance) {
 			mMaterialInstance->setParameter("reflectance", mReflectance);
-		mMaterialInstance->setParameter("clearCoat", mClearCoat);
-		mMaterialInstance->setParameter("clearCoatRoughness", mClearCoatRoughness);
-		mMaterialInstance->setParameter("transmission", mTransmission);
-		mMaterialInstance->setParameter("ior", mIor);
-		mMaterialInstance->setParameter("thickness", mThickness);
-		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
 		}
 	}
 
 	void MaterialPreview::setClearCoat(float value) {
 		mClearCoat = std::clamp(value, 0.0f, 1.0f);
-		if (mMaterialInstance) {
-			mMaterialInstance->setParameter("clearCoat", mClearCoat);
-		}
 	}
 
 	void MaterialPreview::setClearCoatRoughness(float value) {
 		mClearCoatRoughness = std::clamp(value, 0.0f, 1.0f);
-		if (mMaterialInstance) {
-			mMaterialInstance->setParameter("clearCoatRoughness", mClearCoatRoughness);
-		mMaterialInstance->setParameter("transmission", mTransmission);
-		mMaterialInstance->setParameter("ior", mIor);
-		mMaterialInstance->setParameter("thickness", mThickness);
-		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
-		}
 	}
 
 	void MaterialPreview::setThickness(float value) {
 		mThickness = std::clamp(value, 0.0f, 10.0f);
-		if (mMaterialInstance) {
-			mMaterialInstance->setParameter("thickness", mThickness);
-		}
 	}
 
 	void MaterialPreview::setTransmission(float value) {
 		mTransmission = std::clamp(value, 0.0f, 1.0f);
-		if (mMaterialInstance) {
-			mMaterialInstance->setParameter("transmission", mTransmission);
-		}
 	}
 
 	void MaterialPreview::setIor(float value) {
 		mIor = std::clamp(value, 1.0f, 3.0f);
-		if (mMaterialInstance) {
-			mMaterialInstance->setParameter("ior", mIor);
-		mMaterialInstance->setParameter("thickness", mThickness);
-		mMaterialInstance->setParameter("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("aoMap", mAoTexture ? mAoTexture : mWhiteTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture, filament::TextureSampler{});
-		mMaterialInstance->setParameter("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture, filament::TextureSampler{});
-		}
 	}
 
 	void MaterialPreview::setAlbedoMap(const QString& path) {
