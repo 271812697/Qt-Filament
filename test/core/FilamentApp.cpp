@@ -710,6 +710,21 @@ QStringList FilamentApp::previewMaterialNames() const {
     return names;
 }
 
+std::vector<MaterialParameter> FilamentApp::previewMaterialParameters() const {
+    return mPreview ? mPreview->materialParameters() : std::vector<MaterialParameter>{};
+}
+
+QVariant FilamentApp::previewMaterialParameterValue(const QString& name) const {
+    return mPreview ? mPreview->materialParameterValue(name) : QVariant{};
+}
+
+void FilamentApp::setPreviewMaterialParameterValue(
+    const QString& name, const QVariant& value) {
+    if (mPreview) {
+        mPreview->setMaterialParameterValue(name, value);
+    }
+}
+
 PreviewMesh FilamentApp::previewMesh() const {
     return mPreview ? mPreview->meshType() : mPreviewMesh;
 }

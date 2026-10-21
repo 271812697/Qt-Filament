@@ -1,10 +1,14 @@
 #pragma once
 
+#include "MaterialParameter.h"
 #include "PreviewMesh.h"
 
 #include <QColor>
 #include <QObject>
 #include <QStringList>
+#include <QVariant>
+
+#include <vector>
 #include <QString>
 #include <math/mat4.h>
 #include <math/vec3.h>
@@ -162,6 +166,9 @@ namespace MOON {
 		int previewMaterialIndex() const;
 		void setPreviewMaterialIndex(int index);
 		QStringList previewMaterialNames() const;
+		std::vector<MaterialParameter> previewMaterialParameters() const;
+		QVariant previewMaterialParameterValue(const QString& name) const;
+		void setPreviewMaterialParameterValue(const QString& name, const QVariant& value);
 
 		// 预览网格：Sphere / Ball / Cube / Plane
 		PreviewMesh previewMesh() const;

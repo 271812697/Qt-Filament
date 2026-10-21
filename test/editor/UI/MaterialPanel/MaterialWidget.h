@@ -3,7 +3,7 @@
 
 namespace MOON {
 
-	// 材质参数面板：默认 PBR 参数 + IBL 环境参数。
+	// 材质参数面板：参数控件由当前材质包声明的参数元数据动态生成。
 	// 数值直接写入 FilamentApp 的 MaterialPreview，预览球实时更新。
 	class MaterialWidget : public QWidget
 	{

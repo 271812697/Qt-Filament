@@ -1,8 +1,13 @@
 #pragma once
 
+#include "MaterialParameter.h"
 #include "PreviewMesh.h"
 
 #include <QColor>
+#include <QVariant>
+
+#include <map>
+#include <vector>
 #include <QString>
 
 #include <math/vec3.h>
@@ -68,6 +73,11 @@ namespace MOON {
 		bool setMaterialIndex(int index);
 
 		QString materialName() const;
+
+		// ---- 当前材质声明的参数（来自 Material::getParameters 元数据） ----
+		std::vector<MaterialParameter> materialParameters() const;
+		QVariant materialParameterValue(const QString& name) const;
+		void setMaterialParameterValue(const QString& name, const QVariant& value);
 
 		// ---- 默认 PBR 参数（baseColor 以 sRGB 保存，提交给 Filament 时做转换） ----
 		QColor baseColor() const { return mBaseColor; }
@@ -158,6 +168,7 @@ namespace MOON {
 		float mIor = 1.5f;
 		float mThickness = 1.0f;
 		QString mAlbedoMapPath, mMetallicMapPath, mRoughnessMapPath, mAoMapPath, mNormalMapPath, mEmissiveMapPath;
+		std::map<std::string, QVariant> mExtraParameterValues;
 		filament::Texture* mAlbedoTexture = nullptr;
 		filament::Texture* mMetallicTexture = nullptr;
 		filament::Texture* mRoughnessTexture = nullptr;

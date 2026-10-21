@@ -13,6 +13,7 @@
 #include <QColor>
 #include <QComboBox>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QLabel>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -26,126 +27,98 @@ namespace MOON {
 	namespace {
 
 		// --------------------------------------------------------------------
-		// 默认 PBR 材质参数（aiDefaultMat 声明的 4 个 uniform）
+		// 根据当前材质包声明的参数动态生成属性控件。
 		// --------------------------------------------------------------------
-		class PreviewMaterialComponent : public PropertyComponent {
+		QString ParameterDisplayName(const QString& name) {
+			QString result;
+			result.reserve(name.size() + 8);
+			for (int i = 0; i < name.size(); ++i) {
+				const QChar c = name.at(i);
+				if (i > 0 && c.isUpper() && !name.at(i - 1).isUpper()) {
+					result += QLatin1Char(' ');
+				}
+				result += c;
+			}
+			if (!result.isEmpty()) {
+				result[0] = result[0].toUpper();
+			}
+			result.replace(QStringLiteral("Ior"), QStringLiteral("IOR"));
+			result.replace(QStringLiteral("Ao "), QStringLiteral("AO "));
+			result.replace(QStringLiteral("Uv"), QStringLiteral("UV"));
+			return result;
+		}
+
+		class DynamicMaterialComponent : public PropertyComponent {
 		public:
-			PreviewMaterialComponent() {
-				addProperty(new ColorPickerProperty("Base Color", this));
+			explicit DynamicMaterialComponent(std::vector<MaterialParameter> parameters) {
+				for (const MaterialParameter& parameter : parameters) {
+					if (parameter.count != 1) {
+						continue;
+					}
+					const QString label = ParameterDisplayName(parameter.name);
+					if (label.isEmpty() || mParameterNames.contains(label)) {
+						continue;
+					}
 
-				auto* metallic = new SliderFloatProperty("Metallic", this, 0.0f, 1.0f);
-				metallic->setStep(0.01f);
-				addProperty(metallic);
-
-				auto* roughness = new SliderFloatProperty("Roughness", this, 0.0f, 1.0f);
-				roughness->setStep(0.01f);
-				addProperty(roughness);
-
-				auto* reflectance = new SliderFloatProperty("Reflectance", this, 0.0f, 1.0f);
-				reflectance->setStep(0.01f);
-				addProperty(reflectance);
-
-				auto* clearCoat = new SliderFloatProperty("Clear Coat", this, 0.0f, 1.0f);
-				clearCoat->setStep(0.01f);
-				addProperty(clearCoat);
-
-				auto* clearCoatRoughness =
-					new SliderFloatProperty("Clear Coat Roughness", this, 0.0f, 1.0f);
-				clearCoatRoughness->setStep(0.01f);
-				addProperty(clearCoatRoughness);
-
-				auto* transmission = new SliderFloatProperty("Transmission", this, 0.0f, 1.0f);
-				transmission->setStep(0.01f);
-				addProperty(transmission);
-
-				auto* ior = new SliderFloatProperty("Refraction Index", this, 1.0f, 3.0f);
-				ior->setStep(0.01f);
-				addProperty(ior);
-
-				auto* thickness = new SliderFloatProperty("Thickness", this, 0.0f, 10.0f);
-				thickness->setStep(0.01f);
-				addProperty(thickness);
-
-				addProperty(new TextureProperty("Albedo Map", this));
-				addProperty(new TextureProperty("Metallic Map", this));
-				addProperty(new TextureProperty("Roughness Map", this));
-				addProperty(new TextureProperty("AO Map", this));
-				addProperty(new TextureProperty("Normal Map", this));
-				addProperty(new TextureProperty("Emissive Map", this));
+					switch (parameter.kind) {
+					case MaterialParameterKind::Float: {
+						float minimum = 0.0f;
+						float maximum = 1.0f;
+						if (parameter.name == "ior") {
+							minimum = 1.0f;
+							maximum = 3.0f;
+						}
+						else if (parameter.name == "thickness") {
+							maximum = 10.0f;
+						}
+						else if (parameter.name == "subsurfacePower") {
+							maximum = 20.0f;
+						}
+						else if (parameter.name == "anisotropy") {
+							minimum = -1.0f;
+						}
+						auto* property = new SliderFloatProperty(
+							label, this, minimum, maximum);
+						property->setStep(0.01f);
+						addProperty(property);
+						break;
+					}
+					case MaterialParameterKind::Float3:
+					case MaterialParameterKind::Float4:
+						addProperty(new ColorPickerProperty(label, this));
+						break;
+					case MaterialParameterKind::Bool:
+						addProperty(new BoolProperty(
+							label, this, BoolProperty::Style::InviwoRect));
+						break;
+					case MaterialParameterKind::Sampler2D:
+						addProperty(new TextureProperty(label, this));
+						break;
+					default:
+						continue;
+					}
+					mParameterNames.insert(label, parameter.name);
+				}
 			}
 
-			QVariant getPropertyValue(const QString& name) override {
-				auto& app = FilamentApp::instance();
-				if (name == "Base Color") return app.previewBaseColor();
-				if (name == "Metallic") return app.previewMetallic();
-				if (name == "Roughness") return app.previewRoughness();
-				if (name == "Reflectance") return app.previewReflectance();
-				if (name == "Clear Coat") return app.previewClearCoat();
-				if (name == "Clear Coat Roughness") return app.previewClearCoatRoughness();
-				if (name == "Transmission") return app.previewTransmission();
-				if (name == "Refraction Index") return app.previewIor();
-				if (name == "Thickness") return app.previewThickness();
-				if (name == "Albedo Map") return app.previewAlbedoMap();
-				if (name == "Metallic Map") return app.previewMetallicMap();
-				if (name == "Roughness Map") return app.previewRoughnessMap();
-				if (name == "AO Map") return app.previewAoMap();
-				if (name == "Normal Map") return app.previewNormalMap();
-				if (name == "Emissive Map") return app.previewEmissiveMap();
-				return {};
+			QVariant getPropertyValue(const QString& label) override {
+				const QString name = mParameterNames.value(label);
+				return FilamentApp::instance().previewMaterialParameterValue(name);
 			}
 
-			void setPropertyValue(const QString& name, const QVariant& value) override {
-				auto& app = FilamentApp::instance();
-				if (name == "Base Color") {
-					app.setPreviewBaseColor(value.value<QColor>());
-				}
-				else if (name == "Metallic") {
-					app.setPreviewMetallic(value.toFloat());
-				}
-				else if (name == "Roughness") {
-					app.setPreviewRoughness(value.toFloat());
-				}
-				else if (name == "Reflectance") {
-					app.setPreviewReflectance(value.toFloat());
-				}
-				else if (name == "Clear Coat") {
-					app.setPreviewClearCoat(value.toFloat());
-				}
-				else if (name == "Clear Coat Roughness") {
-					app.setPreviewClearCoatRoughness(value.toFloat());
-				}
-				else if (name == "Transmission") {
-					app.setPreviewTransmission(value.toFloat());
-				}
-				else if (name == "Refraction Index") {
-					app.setPreviewIor(value.toFloat());
-				}
-				else if (name == "Thickness") {
-					app.setPreviewThickness(value.toFloat());
-				}
-				else if (name == "Albedo Map") {
-					app.setPreviewAlbedoMap(value.toString());
-				}
-				else if (name == "Metallic Map") {
-					app.setPreviewMetallicMap(value.toString());
-				}
-				else if (name == "Roughness Map") {
-					app.setPreviewRoughnessMap(value.toString());
-				}
-				else if (name == "AO Map") {
-					app.setPreviewAoMap(value.toString());
-				}
-				else if (name == "Normal Map") {
-					app.setPreviewNormalMap(value.toString());
-				}
-				else if (name == "Emissive Map") {
-					app.setPreviewEmissiveMap(value.toString());
+			void setPropertyValue(const QString& label, const QVariant& value) override {
+				const QString name = mParameterNames.value(label);
+				if (!name.isEmpty()) {
+					FilamentApp::instance().setPreviewMaterialParameterValue(name, value);
 				}
 			}
 
 			QString getComponentName() override {
-				return "PBR Material";
+				return "Material Parameters";
 			}
+
+		private:
+			QHash<QString, QString> mParameterNames;
 		};
 
 		// --------------------------------------------------------------------
@@ -255,6 +228,8 @@ namespace MOON {
 	public:
 		explicit MaterialWidgetInternal(MaterialWidget* self) : mSelf(self) {}
 		~MaterialWidgetInternal() {
+			delete mMaterialGroup;
+			delete mMaterialComponent;
 			for (auto& group : mGroups) {
 				delete group.first;      // CollapsibleGroupBoxWidget（会删除子控件）
 				delete group.second;     // PropertyComponent（会删除 WidgetProperty）
@@ -323,14 +298,9 @@ namespace MOON {
 			layout->addWidget(mInfo);
 			layout->addWidget(hint);
 
-			auto* materialGroup = new CollapsibleGroupBoxWidget("PBR Material", mSelf);
-			auto* materialComponent = new PreviewMaterialComponent();
-			layout->addWidget(materialGroup);
-			for (WidgetProperty* property : materialComponent->getProperties()) {
-				materialGroup->addProperty(property);
-			}
-			materialGroup->setCollapsed(false);
-			mGroups.emplace_back(materialGroup, materialComponent);
+			mLayout = layout;
+			mMaterialGroupIndex = layout->count();
+			rebuildMaterialGroup();
 
 			auto* variantGroup = new CollapsibleGroupBoxWidget("Variant Features", mSelf);
 			auto* variantComponent = new PreviewVariantComponent(
@@ -400,6 +370,47 @@ namespace MOON {
 			refreshValues();
 		}
 
+		QString parameterSignature() const {
+			QString signature;
+			for (const MaterialParameter& parameter :
+				FilamentApp::instance().previewMaterialParameters()) {
+				signature += parameter.name;
+				signature += QLatin1Char(':');
+				signature += QString::number((int)parameter.kind);
+				signature += QLatin1Char(';');
+			}
+			return signature;
+		}
+
+		void rebuildMaterialGroup() {
+			if (mMaterialGroup) {
+				mLayout->removeWidget(mMaterialGroup);
+				delete mMaterialGroup;
+				mMaterialGroup = nullptr;
+			}
+			if (mMaterialComponent) {
+				delete mMaterialComponent;
+				mMaterialComponent = nullptr;
+			}
+
+			auto parameters = FilamentApp::instance().previewMaterialParameters();
+			mMaterialSignature = parameterSignature();
+			mMaterialComponent = new DynamicMaterialComponent(std::move(parameters));
+			mMaterialGroup = new CollapsibleGroupBoxWidget(
+				QStringLiteral("Material Parameters"), mSelf);
+			for (WidgetProperty* property : mMaterialComponent->getProperties()) {
+				mMaterialGroup->addProperty(property);
+			}
+			mMaterialGroup->setCollapsed(false);
+			mLayout->insertWidget(mMaterialGroupIndex, mMaterialGroup);
+		}
+
+		void ensureMaterialGroup() {
+			if (parameterSignature() != mMaterialSignature) {
+				rebuildMaterialGroup();
+			}
+		}
+
 		void refreshValues() {
 			auto& app = FilamentApp::instance();
 			if (mInfo) {
@@ -412,6 +423,10 @@ namespace MOON {
 					mMaterialCombo->setCurrentIndex(index);
 				}
 				mMaterialIndex = index;
+			}
+			ensureMaterialGroup();
+			if (mMaterialComponent) {
+				mMaterialComponent->updateWidgetValue();
 			}
 			for (auto& group : mGroups) {
 				group.second->updateWidgetValue();
@@ -431,6 +446,11 @@ namespace MOON {
 		MaterialWidget* mSelf = nullptr;
 		QLabel* mInfo = nullptr;
 		QComboBox* mMaterialCombo = nullptr;
+		QVBoxLayout* mLayout = nullptr;
+		CollapsibleGroupBoxWidget* mMaterialGroup = nullptr;
+		PropertyComponent* mMaterialComponent = nullptr;
+		int mMaterialGroupIndex = 0;
+		QString mMaterialSignature;
 		int mMaterialIndex = 0;
 		int mVariants = MaterialShaderLibrary::DefaultVariant();
 		std::vector<std::pair<CollapsibleGroupBoxWidget*, PropertyComponent*>> mGroups;

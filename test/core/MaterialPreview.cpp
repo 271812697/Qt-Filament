@@ -17,6 +17,8 @@
 #include <filament/TextureSampler.h>
 #include <filament/VertexBuffer.h>
 
+#include <backend/DriverEnums.h>
+
 #include <filament-iblprefilter/IBLPrefilterContext.h>
 #include <imageio/ImageDecoder.h>
 #include <image/LinearImage.h>
@@ -592,6 +594,204 @@ namespace MOON {
 	}
 
 	namespace {
+		float DefaultFloatParameter(const QString& name) {
+			if (name == "metallic") return 0.0f;
+			if (name == "roughness") return 0.40f;
+			if (name == "reflectance") return 0.5f;
+			if (name == "ior") return 1.5f;
+			if (name == "thickness") return 1.0f;
+			if (name == "alpha") return 1.0f;
+			if (name == "glossiness") return 0.6f;
+			if (name == "sheenRoughness") return 0.5f;
+			if (name == "subsurfacePower") return 12.0f;
+			return 0.0f;
+		}
+
+		QColor DefaultColorParameter(const QString& name) {
+			if (name == "specularColor") return QColor(255, 255, 255);
+			if (name == "subsurfaceColor") return QColor(200, 200, 200);
+			if (name == "emissive") return QColor(0, 0, 0);
+			if (name == "sheenColor") return QColor(0, 0, 0);
+			if (name == "absorption") return QColor(0, 0, 0);
+			return QColor(128, 128, 128);
+		}
+
+		bool IsColorVectorName(const QString& name) {
+			return name == "baseColor"
+				|| name == "sheenColor"
+				|| name == "specularColor"
+				|| name == "subsurfaceColor"
+				|| name == "absorption"
+				|| name == "emissive";
+		}
+	} // namespace
+
+	std::vector<MaterialParameter> MaterialPreview::materialParameters() const {
+		std::vector<MaterialParameter> result;
+		if (!mMaterial) {
+			return result;
+		}
+		const size_t count = mMaterial->getParameterCount();
+		if (count == 0) {
+			return result;
+		}
+		std::vector<filament::Material::ParameterInfo> infos(count);
+		const size_t written = mMaterial->getParameters(infos.data(), count);
+		using filament::backend::UniformType;
+		for (size_t i = 0; i < written; ++i) {
+			const auto& info = infos[i];
+			if (!info.name || info.name[0] == '_') {
+				continue;
+			}
+			MaterialParameter parameter;
+			parameter.name = QString::fromUtf8(info.name);
+			parameter.count = info.count;
+			if (info.isSampler) {
+				parameter.kind = MaterialParameterKind::Sampler2D;
+			}
+			else {
+				switch (info.type) {
+				case UniformType::FLOAT:
+					parameter.kind = MaterialParameterKind::Float;
+					break;
+				case UniformType::FLOAT2:
+					parameter.kind = MaterialParameterKind::Float2;
+					break;
+				case UniformType::FLOAT3:
+					parameter.kind = MaterialParameterKind::Float3;
+					break;
+				case UniformType::FLOAT4:
+					parameter.kind = MaterialParameterKind::Float4;
+					break;
+				case UniformType::INT:
+					parameter.kind = MaterialParameterKind::Int;
+					break;
+				case UniformType::BOOL:
+					parameter.kind = MaterialParameterKind::Bool;
+					break;
+				default:
+					parameter.kind = MaterialParameterKind::Other;
+					break;
+				}
+			}
+			result.push_back(std::move(parameter));
+		}
+		return result;
+	}
+
+	QVariant MaterialPreview::materialParameterValue(const QString& name) const {
+		if (name == "baseColor") return mBaseColor;
+		if (name == "metallic") return mMetallic;
+		if (name == "roughness") return mRoughness;
+		if (name == "reflectance") return mReflectance;
+		if (name == "clearCoat") return mClearCoat;
+		if (name == "clearCoatRoughness") return mClearCoatRoughness;
+		if (name == "transmission") return mTransmission;
+		if (name == "ior") return mIor;
+		if (name == "thickness") return mThickness;
+		if (name == "albedoMap") return mAlbedoMapPath;
+		if (name == "metallicMap") return mMetallicMapPath;
+		if (name == "roughnessMap") return mRoughnessMapPath;
+		if (name == "aoMap") return mAoMapPath;
+		if (name == "normalMap") return mNormalMapPath;
+		if (name == "emissiveMap") return mEmissiveMapPath;
+
+		const auto extra = mExtraParameterValues.find(name.toStdString());
+		if (extra != mExtraParameterValues.end()) {
+			return extra->second;
+		}
+
+		for (const MaterialParameter& parameter : materialParameters()) {
+			if (parameter.name != name) {
+				continue;
+			}
+			switch (parameter.kind) {
+			case MaterialParameterKind::Float:
+				return DefaultFloatParameter(name);
+			case MaterialParameterKind::Float3:
+			case MaterialParameterKind::Float4:
+				return DefaultColorParameter(name);
+			case MaterialParameterKind::Int:
+				return 0;
+			case MaterialParameterKind::Bool:
+				return false;
+			case MaterialParameterKind::Sampler2D:
+				return QString();
+			default:
+				return {};
+			}
+		}
+		return {};
+	}
+
+	void MaterialPreview::setMaterialParameterValue(
+		const QString& name, const QVariant& value) {
+		if (name == "baseColor") {
+			setBaseColor(value.value<QColor>());
+			return;
+		}
+		if (name == "metallic") {
+			setMetallic(value.toFloat());
+			return;
+		}
+		if (name == "roughness") {
+			setRoughness(value.toFloat());
+			return;
+		}
+		if (name == "reflectance") {
+			setReflectance(value.toFloat());
+			return;
+		}
+		if (name == "clearCoat") {
+			setClearCoat(value.toFloat());
+			return;
+		}
+		if (name == "clearCoatRoughness") {
+			setClearCoatRoughness(value.toFloat());
+			return;
+		}
+		if (name == "transmission") {
+			setTransmission(value.toFloat());
+			return;
+		}
+		if (name == "ior") {
+			setIor(value.toFloat());
+			return;
+		}
+		if (name == "thickness") {
+			setThickness(value.toFloat());
+			return;
+		}
+		if (name == "albedoMap") {
+			setAlbedoMap(value.toString());
+			return;
+		}
+		if (name == "metallicMap") {
+			setMetallicMap(value.toString());
+			return;
+		}
+		if (name == "roughnessMap") {
+			setRoughnessMap(value.toString());
+			return;
+		}
+		if (name == "aoMap") {
+			setAoMap(value.toString());
+			return;
+		}
+		if (name == "normalMap") {
+			setNormalMap(value.toString());
+			return;
+		}
+		if (name == "emissiveMap") {
+			setEmissiveMap(value.toString());
+			return;
+		}
+
+		mExtraParameterValues[name.toStdString()] = value;
+		applyMaterial();
+	}
+
+	namespace {
 	filament::Texture* CreateSolidTexture(filament::Engine* engine, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 	{
 		auto* pixels = new uint8_t[4] { r, g, b, a };
@@ -1020,47 +1220,92 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 			return;
 		}
 
-		auto has = [this](const char* name) {
-			return mMaterial->hasParameter(name);
-		};
-		auto setFloat = [this, &has](const char* name, float value) {
-			if (has(name)) {
-				mMaterialInstance->setParameter(name, value);
-			}
-		};
-		auto setTexture = [this, &has](const char* name, filament::Texture* texture) {
-			if (has(name)) {
-				mMaterialInstance->setParameter(name, texture,
-					filament::TextureSampler{});
-			}
-		};
+		using filament::math::float3;
+		using filament::math::float4;
 
-		if (has("baseColor")) {
-			mMaterialInstance->setParameter("baseColor", filament::RgbType::sRGB,
-				filament::math::float3{
-					(float)mBaseColor.redF(),
-					(float)mBaseColor.greenF(),
-					(float)mBaseColor.blueF() });
+		for (const MaterialParameter& parameter : materialParameters()) {
+			if (parameter.count != 1) {
+				continue;
+			}
+			const QByteArray nameBytes = parameter.name.toUtf8();
+			const char* name = nameBytes.constData();
+
+			switch (parameter.kind) {
+			case MaterialParameterKind::Sampler2D: {
+				filament::Texture* texture = mWhiteTexture;
+				if (parameter.name == "albedoMap") {
+					texture = mAlbedoTexture ? mAlbedoTexture : mWhiteTexture;
+				}
+				else if (parameter.name == "metallicMap") {
+					texture = mMetallicTexture ? mMetallicTexture : mWhiteTexture;
+				}
+				else if (parameter.name == "roughnessMap") {
+					texture = mRoughnessTexture ? mRoughnessTexture : mWhiteTexture;
+				}
+				else if (parameter.name == "aoMap") {
+					texture = mAoTexture ? mAoTexture : mWhiteTexture;
+				}
+				else if (parameter.name == "normalMap") {
+					texture = mNormalTexture ? mNormalTexture : mFlatNormalTexture;
+				}
+				else if (parameter.name == "emissiveMap") {
+					texture = mEmissiveTexture ? mEmissiveTexture : mBlackTexture;
+				}
+				else if (parameter.name.contains("normal", Qt::CaseInsensitive)) {
+					texture = mFlatNormalTexture;
+				}
+				mMaterialInstance->setParameter(
+					name, texture, filament::TextureSampler{});
+				break;
+			}
+			case MaterialParameterKind::Float: {
+				QVariant value = materialParameterValue(parameter.name);
+				const float scalar = value.isValid()
+					? value.toFloat()
+					: DefaultFloatParameter(parameter.name);
+				mMaterialInstance->setParameter(name, scalar);
+				break;
+			}
+			case MaterialParameterKind::Float3:
+			case MaterialParameterKind::Float4: {
+				QVariant value = materialParameterValue(parameter.name);
+				QColor color = value.canConvert<QColor>()
+					? value.value<QColor>()
+					: DefaultColorParameter(parameter.name);
+				if (!color.isValid()) {
+					color = DefaultColorParameter(parameter.name);
+				}
+				const float3 rgb{
+					(float)color.redF(), (float)color.greenF(), (float)color.blueF() };
+				if (parameter.kind == MaterialParameterKind::Float3) {
+					if (parameter.name == "baseColor") {
+						mMaterialInstance->setParameter(
+							name, filament::RgbType::sRGB, rgb);
+					}
+					else {
+						mMaterialInstance->setParameter(name, rgb);
+					}
+				}
+				else {
+					mMaterialInstance->setParameter(name,
+						float4{ rgb.x, rgb.y, rgb.z, (float)color.alphaF() });
+				}
+				break;
+			}
+			case MaterialParameterKind::Int: {
+				const QVariant value = materialParameterValue(parameter.name);
+				mMaterialInstance->setParameter(name, value.toInt());
+				break;
+			}
+			case MaterialParameterKind::Bool: {
+				const QVariant value = materialParameterValue(parameter.name);
+				mMaterialInstance->setParameter(name, value.toBool());
+				break;
+			}
+			default:
+				break;
+			}
 		}
-		setFloat("metallic", mMetallic);
-		setFloat("roughness", mRoughness);
-		setFloat("reflectance", mReflectance);
-		setFloat("clearCoat", mClearCoat);
-		setFloat("clearCoatRoughness", mClearCoatRoughness);
-		setFloat("transmission", mTransmission);
-		setFloat("ior", mIor);
-		setFloat("thickness", mThickness);
-		// Fade / refraction materials need an explicit alpha.
-		setFloat("alpha", 1.0f);
-		// Specular-glossiness materials use glossiness instead of roughness.
-		setFloat("glossiness", 1.0f - mRoughness);
-
-		setTexture("albedoMap", mAlbedoTexture ? mAlbedoTexture : mWhiteTexture);
-		setTexture("metallicMap", mMetallicTexture ? mMetallicTexture : mWhiteTexture);
-		setTexture("roughnessMap", mRoughnessTexture ? mRoughnessTexture : mWhiteTexture);
-		setTexture("aoMap", mAoTexture ? mAoTexture : mWhiteTexture);
-		setTexture("normalMap", mNormalTexture ? mNormalTexture : mFlatNormalTexture);
-		setTexture("emissiveMap", mEmissiveTexture ? mEmissiveTexture : mBlackTexture);
 	}
 
 	void MaterialPreview::resetMaterial() {
