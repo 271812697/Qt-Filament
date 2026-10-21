@@ -12,6 +12,7 @@
 
 #include <math/vec3.h>
 #include <math/vec4.h>
+#include <math/vec2.h>
 #include <utils/Entity.h>
 
 #include <cstdint>
@@ -125,6 +126,7 @@ namespace MOON {
 		bool rebuildMesh(PreviewMesh type);
 		bool createRenderable(const std::vector<filament::math::float3>& positions,
 			const std::vector<filament::math::float3>& normals,
+			const std::vector<filament::math::float2>& uvs,
 			const std::vector<uint32_t>& indices);
 		void destroyMesh();
 		void createEnvironment();
@@ -146,6 +148,8 @@ namespace MOON {
 		// 上传给 GPU 之前的 CPU 数据必须活到命令执行完；成员变量保证生命周期。
 		std::vector<filament::math::float3> mPositions;
 		std::vector<filament::math::float4> mTangents;
+		std::vector<filament::math::float2> mUvs;
+		std::vector<filament::math::float4> mColors;
 		std::vector<uint32_t> mIndices;
 		uint32_t mIndexCount = 0;
 		PreviewMesh mMeshType = PreviewMesh::Sphere;

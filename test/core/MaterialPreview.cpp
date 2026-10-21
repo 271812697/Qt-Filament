@@ -865,6 +865,32 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 		return isReady();
 	}
 
+	namespace {
+		bool IsMaterialCompatible(const filament::Material& material) {
+			using namespace filament;
+			if (material.getMaterialDomain() != MaterialDomain::SURFACE) {
+				return false;
+			}
+			if (material.getVertexDomain() != VertexDomain::OBJECT) {
+				return false;
+			}
+
+			const auto required = material.getRequiredAttributes();
+			for (size_t i = 0; i < 32; ++i) {
+				if (!required.test(i)) {
+					continue;
+				}
+				if (i != VertexAttribute::POSITION
+					&& i != VertexAttribute::TANGENTS
+					&& i != VertexAttribute::UV0
+					&& i != VertexAttribute::COLOR) {
+					return false;
+				}
+			}
+			return true;
+		}
+	} // namespace
+
 	bool MaterialPreview::createMaterial() {
 		const auto& assets = MaterialAssets();
 		if (mMaterialIndex < 0 || mMaterialIndex >= static_cast<int>(assets.size())) {
@@ -877,6 +903,13 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 			.build(*mEngine);
 		if (!mMaterial) {
 			CORE_ERROR("[Preview] 无法加载材质包: {}", asset.id);
+			return false;
+		}
+		if (!IsMaterialCompatible(*mMaterial)) {
+			CORE_ERROR("[Preview] 材质不适用于 3D 预览网格（需要 SURFACE/OBJECT + "
+				"POSITION/TANGENTS/UV0/COLOR）: {}", asset.id);
+			mEngine->destroy(mMaterial);
+			mMaterial = nullptr;
 			return false;
 		}
 
@@ -910,6 +943,13 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 			.build(*mEngine);
 		if (!newMaterial) {
 			CORE_ERROR("[Preview] 材质包创建失败: {}", asset.id);
+			mMaterialIndex = previousIndex;
+			return false;
+		}
+		if (!IsMaterialCompatible(*newMaterial)) {
+			CORE_ERROR("[Preview] 材质不适用于 3D 预览网格（需要 SURFACE/OBJECT + "
+				"POSITION/TANGENTS/UV0/COLOR）: {}", asset.id);
+			mEngine->destroy(newMaterial);
 			mMaterialIndex = previousIndex;
 			return false;
 		}
@@ -947,6 +987,14 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 		}
 	}
 
+	namespace {
+		void GeneratePreviewUVs(
+			PreviewMesh type,
+			const std::vector<filament::math::float3>& positions,
+			const std::vector<filament::math::float3>& normals,
+			std::vector<filament::math::float2>& uvs);
+	}
+
 	bool MaterialPreview::rebuildMesh(PreviewMesh type) {
 		if (!mEngine || !mScene || !mMaterialInstance) {
 			return false;
@@ -955,6 +1003,7 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 
 		std::vector<float3> positions;
 		std::vector<float3> normals;
+		std::vector<filament::math::float2> uvs;
 		std::vector<uint32_t> indices;
 		switch (type) {
 		case PreviewMesh::Ball: {
@@ -984,7 +1033,9 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 			break;
 		}
 
-		if (!createRenderable(positions, normals, indices)) {
+		GeneratePreviewUVs(type, positions, normals, uvs);
+
+		if (!createRenderable(positions, normals, uvs, indices)) {
 			return false;
 		}
 		CORE_INFO("[Preview] 预览网格: {} ({} triangles)",
@@ -992,13 +1043,71 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 		return true;
 	}
 
+	namespace {
+		void GeneratePreviewUVs(
+			PreviewMesh type,
+			const std::vector<filament::math::float3>& positions,
+			const std::vector<filament::math::float3>& normals,
+			std::vector<filament::math::float2>& uvs) {
+			using namespace filament::math;
+			constexpr float kPi = 3.14159265358979323846f;
+
+			uvs.resize(positions.size());
+			if (type == PreviewMesh::Cube && normals.size() == positions.size()) {
+				for (size_t i = 0; i < positions.size(); ++i) {
+					const float3& p = positions[i];
+					const float3& n = normals[i];
+					const float ax = std::abs(n.x);
+					const float ay = std::abs(n.y);
+					const float az = std::abs(n.z);
+					float u = 0.0f;
+					float v = 0.0f;
+					if (ax >= ay && ax >= az) {
+						u = p.z;
+						v = p.y;
+					}
+					else if (ay >= ax && ay >= az) {
+						u = p.x;
+						v = p.z;
+					}
+					else {
+						u = p.x;
+						v = p.y;
+					}
+					uvs[i] = { u * 0.5f + 0.5f, v * 0.5f + 0.5f };
+				}
+				return;
+			}
+
+			if (type == PreviewMesh::Plane) {
+				for (size_t i = 0; i < positions.size(); ++i) {
+					uvs[i] = {
+						positions[i].x * 0.5f + 0.5f,
+						positions[i].y * 0.5f + 0.5f };
+				}
+				return;
+			}
+
+			// 球/Ball 使用球面 UV；材质预览的贴图默认是纯色，接缝影响很小。
+			for (size_t i = 0; i < positions.size(); ++i) {
+				const float3 p = positions[i];
+				const float len = std::max(length(p), 1.0e-6f);
+				const float u = std::atan2(p.z, p.x) / (2.0f * kPi) + 0.5f;
+				const float v = std::acos(std::clamp(p.y / len, -1.0f, 1.0f)) / kPi;
+				uvs[i] = { u, v };
+			}
+		}
+	} // namespace
+
 	bool MaterialPreview::createRenderable(
 		const std::vector<filament::math::float3>& positions,
 		const std::vector<filament::math::float3>& normals,
+		const std::vector<filament::math::float2>& uvs,
 		const std::vector<uint32_t>& indices) {
 		using namespace filament::math;
 
-		if (positions.empty() || positions.size() != normals.size() || indices.empty()) {
+		if (positions.empty() || positions.size() != normals.size()
+			|| positions.size() != uvs.size() || indices.empty()) {
 			return false;
 		}
 
@@ -1009,6 +1118,8 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 		for (size_t i = 0; i < mPositions.size(); ++i) {
 			mTangents[i] = MakeTangentFrame(normalize(normals[i]));
 		}
+		mUvs = uvs;
+		mColors.assign(mPositions.size(), float4{ 1.0f, 1.0f, 1.0f, 1.0f });
 		mIndices = indices;
 		mIndexCount = (uint32_t)mIndices.size();
 
@@ -1031,10 +1142,14 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 
 		mVertexBuffer = filament::VertexBuffer::Builder()
 			.vertexCount((uint32_t)mPositions.size())
-			.bufferCount(2)
+			.bufferCount(4)
 			.attribute(filament::VertexAttribute::POSITION, 0,
 				filament::VertexBuffer::AttributeType::FLOAT3, 0, sizeof(float) * 3)
 			.attribute(filament::VertexAttribute::TANGENTS, 1,
+				filament::VertexBuffer::AttributeType::FLOAT4, 0, sizeof(float) * 4)
+			.attribute(filament::VertexAttribute::UV0, 2,
+				filament::VertexBuffer::AttributeType::FLOAT2, 0, sizeof(float) * 2)
+			.attribute(filament::VertexAttribute::COLOR, 3,
 				filament::VertexBuffer::AttributeType::FLOAT4, 0, sizeof(float) * 4)
 			.build(*mEngine);
 		if (!mVertexBuffer) {
@@ -1044,6 +1159,10 @@ bool MaterialPreview::initialize(filament::Engine* engine, filament::Scene* scen
 			mPositions.data(), mPositions.size() * sizeof(filament::math::float3), nullptr));
 		mVertexBuffer->setBufferAt(*mEngine, 1, filament::VertexBuffer::BufferDescriptor(
 			mTangents.data(), mTangents.size() * sizeof(filament::math::float4), nullptr));
+		mVertexBuffer->setBufferAt(*mEngine, 2, filament::VertexBuffer::BufferDescriptor(
+			mUvs.data(), mUvs.size() * sizeof(filament::math::float2), nullptr));
+		mVertexBuffer->setBufferAt(*mEngine, 3, filament::VertexBuffer::BufferDescriptor(
+			mColors.data(), mColors.size() * sizeof(filament::math::float4), nullptr));
 
 		mIndexBuffer = filament::IndexBuffer::Builder()
 			.indexCount(mIndexCount)
